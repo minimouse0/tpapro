@@ -1,4 +1,4 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [0, 4, 0]);
+ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 0, 0]);
 log("作者：小鼠同学")
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
@@ -376,14 +376,14 @@ function tpask(player,origin,type){
 				player.tell(`${origin.name}希望传送到您这里。`);
 				player.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
 				player.tell(`输入/tpa preferences来管理此通知。`)
-				origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}秒。你可通过/tpa preference调整有效时间。`)
+				origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}秒。你可通过/tpa preferences调整有效时间。`)
 				cachedrequests.unshift({origin:origin,target:player,type:type,time:new Date().getTime()})
 			}
 			if(type=="tpahere"){
 				player.tell(`${origin.name}希望将您传送至他那里。`);
 				player.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
 				player.tell(`输入/tpa preferences来管理此通知。`)
-				origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}秒。你可通过/tpa preference调整有效时间。`)
+				origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}秒。你可通过/tpa preferences调整有效时间。`)
 				cachedrequests.unshift({origin:origin,target:player,type:type,time:new Date().getTime()})
 			}
 			break;
@@ -496,7 +496,7 @@ function tpaskform(origin,target,type){
 				target.tell(`您已成功缓存了此请求。之后的${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}内，输入/tpa accept来接受此请求，输入/tpa deny来拒绝此请求`)
 			}
 			else{
-				origin.tell(`${target.name}设置了弹窗提醒，但弹窗未成功发送。这可能是因为${target.name}关闭了弹窗/或打开了物品栏/其他功能窗口/处于暂停界面/网络卡顿或开启了分屏/切换至其他窗口。您的请求已暂存，并在${individualpreferences.get(origin.uuid).requestavailable/1000}内有效。您可以提醒${target.name}输入/tpa accept接受，或重新发送请求。`);
+				origin.tell(`${target.name}设置了弹窗提醒，但弹窗未成功发送。这可能是因为${target.name}关闭了弹窗/或打开了物品栏/其他功能窗口/处于暂停界面/网络卡顿或开启了分屏/切换至其他窗口。您的请求已暂存，并在${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}内有效。您可以提醒${target.name}输入/tpa accept接受，或重新发送请求。`);
 				cachedrequests.unshift({origin:origin,target:target,type:type,time:new Date().getTime()})
 			}			
 		})		
@@ -522,7 +522,7 @@ function tpaskform(origin,target,type){
 					break;
 				}
 				default:{
-					origin.tell(`${target.name}设置了弹窗提醒，但弹窗未成功发送。这可能是因为${target.name}关闭了弹窗/或打开了物品栏/其他功能窗口/处于暂停界面/网络卡顿或开启了分屏/切换至其他窗口。您的请求已暂存，并在${individualpreferences.get(origin.uuid).requestavailable/1000}内有效。您可以提醒${target.name}输入/tpa accept接受，或重新发送请求。`);
+					origin.tell(`${target.name}设置了弹窗提醒，但弹窗未成功发送。这可能是因为${target.name}关闭了弹窗/或打开了物品栏/其他功能窗口/处于暂停界面/网络卡顿或开启了分屏/切换至其他窗口。您的请求已暂存，并在${individualpreferences.get("preferences")[getIFromPref(origin.uuid)].requestavailable/1000}内有效。您可以提醒${target.name}输入/tpa accept接受，或重新发送请求。`);
 					cachedrequests.unshift({origin:origin,target:target,type:type,time:new Date().getTime()})
 				}
 			}
@@ -606,6 +606,7 @@ function toooften(player) {
 	}
 	return false;
 }
+
 ll.export(toooften, "tpapro", "tpaFrequently");
 function payForFrequency(player,type) {
 
