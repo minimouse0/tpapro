@@ -1,4 +1,4 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 0, 0]);
+ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 0, 1]);
 log("作者：小鼠同学")
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
@@ -99,6 +99,10 @@ class gmoney {
 			case "llmoney": {
 				return money.get(player.xuid);
 				break;
+			}
+			case "TMEssential": {
+				let func = ll.import("TMETApi", "getMoney");
+				return func(player.realName);
 			}
 		}
 	}
