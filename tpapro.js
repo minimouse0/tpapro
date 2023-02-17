@@ -1,4 +1,5 @@
 ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 0, 1]);
+//已经是正式版了，不用写那个
 log("作者：小鼠同学")
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
@@ -599,7 +600,7 @@ function whethertpa(origin,targetarr,to,type){
 	}
 }
 function toooften(player) {
-	let times = 0;
+	let times = 0,i=0;
 	for (i = 0; i < requestshistory.length; i++) {
 		if (player.uuid == requestshistory[i].origin.uuid) {
 			times++;
