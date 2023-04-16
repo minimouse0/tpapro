@@ -1,6 +1,5 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 0, 1]);
+ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 1, 0]);
 //已经是正式版了，不用写那个
-log("作者：小鼠同学")
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
 //初始化config.json
@@ -60,6 +59,7 @@ if (indivPrefVersion < currentIndivPrefVersion) {
 	log(`正在更新tpapro/individualpreferences.json`);
 	updateIndivPrefVersion(indivPrefVersion, currentIndivPrefVersion);
 	individualpreferences.reload();
+	RefreshPrefIndexCache()
 	log(`更新完成，当前协议：${checkIndivPrefVersion()}`)
 }
 
@@ -147,7 +147,8 @@ class vips {
 		}
 	}
 }
-
+let PrefIndexCache={}
+RefreshPrefIndexCache()
 let cachedrequests = [];
 /*origin:发起者
  * target:接受者
@@ -212,6 +213,7 @@ maincmd.setCallback(function(cmd,origin,output,results){
 		let write = individualpreferences.get("preferences");
 		write[getIFromPref(origin.player.uuid)].active = !write[getIFromPref(origin.player.uuid)].active;
 		individualpreferences.set("preferences", write);
+		RefreshPrefIndexCache()
 		if (write[getIFromPref(origin.player.uuid)].active) { origin.player.tell("您已经开启了tpa功能。输入/tpa preferences来调整偏好设置。"); }
 		else { origin.player.tell("您已经关闭了tpa功能。输入/tpa switch来重新开启。"); }
 	}
@@ -246,6 +248,7 @@ mgrcmd.setCallback((cmd, origin, output, results) => {
 			}
 		}
 		if (individualpreferences.reload()) {
+			RefreshPrefIndexCache()
 			if (origin.type == 0) {
 				origin.player.tell("玩家偏好数据文件重载完成");
 			} else if (origin.type == 7) {
@@ -272,6 +275,7 @@ mgrcmd.setup();
 
 //初始化玩家的偏好设置
 mc.listen("onJoin",(player)=>{
+	if(player.isSimulatedPlayer()){return;}
 	if(getIFromPref(player.uuid)==null){//找不到玩家的信息
 		if(individualpreferences.get(player.uuid)!=null){//在根目录中找到了未迁移玩家的信息
 			log(`玩家${player.name}的数据未迁移！正在迁移该玩家的数据`);
@@ -284,6 +288,7 @@ mc.listen("onJoin",(player)=>{
 				acceptmode: individualpreferences.get(player.uuid).acceptmode 
 			});
 			individualpreferences.set("preferences",write);	
+			RefreshPrefIndexCache()
 			individualpreferences.delete(player.uuid);			
 		}
 		else{//都没找到，证明该玩家第一次进服
@@ -295,7 +300,8 @@ mc.listen("onJoin",(player)=>{
 				requestavailable: conf.get("default_preferences").requestavailable, 
 				acceptmode: conf.get("default_preferences").acceptmode 
 			});
-			individualpreferences.set("preferences",write);			
+			individualpreferences.set("preferences",write);		
+			RefreshPrefIndexCache()	
 		}
 	}
 
@@ -344,6 +350,7 @@ function tpaform(player,type){
 	}
 	let onlineplayers = []
 	mc.getOnlinePlayers().forEach(pl => {
+		if(pl.isSimulatedPlayer()){return;}//自动跳过假人
 		onlineplayers.push(pl)
 	})
 	onlineplayers.forEach(function (item, index, arr) {
@@ -473,6 +480,7 @@ function individualpreferencesform(player){
 			//更改特定玩家的数据结束，开始写入
 			write[getIFromPref(player.uuid)]=preferences;
 			individualpreferences.set("preferences",write);
+			RefreshPrefIndexCache()
 			individualpreferences.reload();
 			player.tell("已保存");
 		}
@@ -617,14 +625,19 @@ function payForFrequency(player,type) {
 
 }
 function getIFromPref(uuid){
-	let prefarr = individualpreferences.get("preferences");
-	let i=0;
-	for(i=0;i<prefarr.length;i++){
-		if(prefarr[i].uuid==uuid){
-			return i;
-		}
+	if(PrefIndexCache[uuid]!=undefined){
+		return PrefIndexCache[uuid];
 	}
 	return null;
+}
+/**
+ * @param {function} RefreshPrefIndexCache playerContents.json在文件内容改变时，刷新PrefIndexCache
+ */
+async function RefreshPrefIndexCache(){
+	let prefarr=individualpreferences.get("preferences")
+	for(let i in prefarr){
+		PrefIndexCache[prefarr[i].uuid]=i
+	}
 }
 function getPlayerFromName(name) {
 	let i=1;
@@ -708,7 +721,7 @@ ll.export(tpaHistory, "tpapro", "tpaHistory");
 function tpaRequests() {
 	return cachedrequests;
 }
-ll.export(tpaHistory, "tpapro", "tpaRequests");
+ll.export(tpaRequests, "tpapro", "tpaRequests");
 
 /*
  * 即将推出
