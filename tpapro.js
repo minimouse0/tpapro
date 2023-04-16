@@ -318,9 +318,9 @@ function tpa(player){//只有从缓存中读取请求时才会调用这个函数
 		if(cachedrequests[i].target.uuid==player.uuid&&new Date().getTime()-cachedrequests[i].time<=individualpreferences.get("preferences")[getIFromPref(cachedrequests[i].origin.uuid)].requestavailable){
 			//这个缓存的请求是tpa还是tpahere
 			if(cachedrequests[i].type=="tpa"){
-				cachedrequests[i].origin.teleport(cachedrequests[i].target.pos);
+				fixTeleport(cachedrequests[i].origin,cachedrequests[i].target.pos)
 			}else if(cachedrequests[i].type=="tpahere"){
-				cachedrequests[i].target.teleport(cachedrequests[i].origin.pos);
+				fixTeleport(cachedrequests[i].target,cachedrequests[i].origin.pos)
 			}
 			if (toooften(cachedrequests[i].origin)) {
 				economy.reduce(cachedrequests[i].origin, conf.get("frequency_limit").limit_price);//频繁价格
@@ -402,7 +402,7 @@ function tpask(player,origin,type){
 		}
 		case 0:{//自动接受
 			if(type=="tpa"){
-				origin.teleport(player.pos)
+				fixTeleport(origin,player.pos)
 				//requestshistory自动接受的tpa
 				if (toooften(origin)) {
 					economy.reduce(origin, conf.get("frequency_limit").limit_price);//频繁价格
@@ -411,7 +411,7 @@ function tpask(player,origin,type){
 				economy.reduce(origin, conf.get("economy").price);
 			}
 			if(type=="tpahere"){
-				player.teleport(origin.pos)
+				fixTeleport(player,origin.pos)
 				if (toooften(origin)) {
 					economy.reduce(origin, conf.get("frequency_limit").limit_price);//频繁价格
 				}
@@ -495,7 +495,7 @@ function tpaskform(origin,target,type){
 		fm.setContent(`${origin.name}希望传送到您这里。`)
 		target.sendForm(fm,function(player,id){
 			if (id == 0) {
-				origin.teleport(target.pos);
+				fixTeleport(origin,target.pos)
 				//弹窗接受的tpa
 				if (toooften(origin)) {
 					economy.reduce(origin, conf.get("frequency_limit").limit_price);//频繁价格
@@ -519,7 +519,7 @@ function tpaskform(origin,target,type){
 		target.sendForm(fm,function(player,id){
 			switch (id) {
 				case 0: {
-					target.teleport(origin.pos);
+					fixTeleport(target,origin.pos)
 					//弹窗接受的tpahere
 					if (toooften(origin)) {
 						economy.reduce(origin, conf.get("frequency_limit").limit_price);//频繁价格
@@ -606,6 +606,17 @@ function whethertpa(origin,targetarr,to,type){
 	else{
 		origin.tell("您未开启tpa。输入/tpa switch来开启。")
 	}
+}
+function fixTeleport(player,pos){
+	let target=pos;
+	let threatBlock=mc.getBlock(pos.x-1,pos.y+1,pos.z-1,pos.dimid);
+	log(threatBlock.name)
+	log(threatBlock.isAir.toString())
+	log(threatBlock.pos)
+	if(!threatBlock.isAir){
+		target=new FloatPos(pos.x,pos.y-1.5,pos.z,pos.dimid)
+	}
+	player.teleport(target);
 }
 function toooften(player) {
 	let times = 0,i=0;
