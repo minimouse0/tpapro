@@ -1,4 +1,4 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 1, 1]);
+ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 2, 0]);
 //已经是正式版了，不用写那个
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
@@ -51,8 +51,6 @@ if (confVersion < currentConfVersion) {
 	conf.reload();
 	log(`更新完成，当前协议：${checkconfversion()}`)
 }
-//colorLog("dk_yellow","为什么更新后我的玩家偏好设置重置了？")
-//colorLog("dk_yellow","0.4.0版本后，玩家数据结构更改，请依照 的方式手动更新");
 if (indivPrefVersion < currentIndivPrefVersion) {
 	log(`tpapro/individualpreferences.json的协议过旧`);
 	log(`当前文件协议：${indivPrefVersion}，当前插件所需协议：${currentIndivPrefVersion}`);
@@ -229,9 +227,7 @@ testKVDB();
 function testKVDB(){
 	let t="202304171030"
 	let tpermissionlist = new PermissionList(t,individualPreferences2)
-	//log(tpermissionlist.data.mode)
 	tpermissionlist.set("mode","whitelist")
-	//log(tpermissionlist.data.mode)
 }
 
 let PrefIndexCache={}
@@ -259,7 +255,7 @@ maincmd.setEnum("here", ["here","h"]);
 maincmd.setEnum("deny", ["deny","refuse","reject","decline","denial","d"]);
 maincmd.setEnum("switch", ["switch", "s"]);
 maincmd.setEnum("to", ["to"]);
-maincmd.setEnum("requests", ["requests"]);
+maincmd.setEnum("requests", ["requests","r"]);
 maincmd.mandatory("accept", ParamType.Enum, "accept");
 maincmd.mandatory("preferences", ParamType.Enum, "preferences");
 maincmd.mandatory("here", ParamType.Enum, "here");
@@ -310,7 +306,7 @@ maincmd.setCallback(function(cmd,origin,output,results){
 		if (write[getIFromPref(origin.player.uuid)].active) { origin.player.tell("您已经开启了tpa功能。输入/tpa preferences来调整偏好设置。"); }
 		else { origin.player.tell("您已经关闭了tpa功能。输入/tpa switch来重新开启。"); }
 	}
-	else if (results.requests=="requests"){sendRequestsForm(origin.player)}//选择一个仍然有效的请求来接受或拒绝
+	else if (results.requests=="requests"||results.requests=="r"){sendRequestsForm(origin.player)}//选择一个仍然有效的请求来接受或拒绝
 	//tpa
 	else {
 		whethertpa(origin.player,results.target,results.to=="to","tpa");
@@ -768,12 +764,77 @@ function sendRequestsForm(player){
 		
 	})
 	player.sendForm(fm,(player,id)=>{
-		
+		if(id==null){return;}
+		let chosenRequest=availableRequests[id]
+		if(chosenRequest.origin.uuid==null){
+			player.tell("没有找到请求发起者，该玩家可能已经下线。")
+			return;
+		}
+		if(chosenRequest.target.uuid==player.uuid&&new Date().getTime()-chosenRequest.time<=individualpreferences.get("preferences")[getIFromPref(chosenRequest.origin.uuid)].requestavailable){
+			let fm1=mc.newSimpleForm()
+			fm1.setTitle(" ")
+			fm1.setContent("对玩家"+chosenRequest.origin.name+"向您发起的"+chosenRequest.type+"请求")
+			fm1.addButton("接受")
+			fm1.addButton("拒绝")
+			fm1.addButton("搁置")
+			fm1.addButton("丢弃")
+			player.sendForm(fm1,(player,id)=>{
+				if(chosenRequest.origin.uuid==null){return;}
+				switch(id){
+					case 0:{
+						//这个缓存的请求是tpa还是tpahere
+						if(chosenRequest.type=="tpa"){
+							fixTeleport(chosenRequest.origin,chosenRequest.target.pos)
+						}else if(chosenRequest.type=="tpahere"){
+							fixTeleport(chosenRequest.target,chosenRequest.origin.pos)
+						}
+						if (toooften(chosenRequest.origin)) {
+							economy.reduce(chosenRequest.origin, conf.get("frequency_limit").limit_price);//频繁价格
+						}				
+						economy.reduce(chosenRequest.origin, conf.get("economy").price);//基础价格
+						requestDone(chosenRequest)		
+						break;	
+					}
+					case 1:{
+						chosenRequest.origin.tell(chosenRequest.target.name+"拒绝了您的"+chosenRequest.type+"请求")
+						removeRequest(chosenRequest);
+						break;
+					}
+					case 2:{
+						break;
+					}
+					case 3:{
+						removeRequest(chosenRequest)
+					}
+				}
+			})
+
+		}
+		else{
+			player.tell("该请求已过期。")
+		}
 	})
 }
 
 function payForFrequency(player,type) {
 
+}
+/**
+ * 完成cachedrequests中的请求后的收尾动作
+ * @param {Request} request 此次完成的请求
+ */
+async function requestDone(request){
+	//requestshistory指令接受
+	requestshistory.unshift(request);
+	requestshistory[0].time = new Date().getTime();
+	removeRequest(request)
+}
+async function removeRequest(request){
+	cachedrequests.forEach((currentValue,i)=>{
+		if(request.origin.uuid==currentValue.origin.uuid && request.target.uuid==currentValue.target.uuid && request.time==currentValue.time){
+			cachedrequests.splice(i,1);
+		}
+	})
 }
 function getIFromPref(uuid){
 	if(PrefIndexCache[uuid]!=undefined){
