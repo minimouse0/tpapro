@@ -779,7 +779,7 @@ function sendRequestsForm(player){
 			fm1.addButton("搁置")
 			fm1.addButton("丢弃")
 			player.sendForm(fm1,(player,id)=>{
-				if(chosenRequest.origin.uuid==null){return;}
+				if(chosenRequest.origin.uuid==null){player.tell("没有找到请求发起者，该玩家可能已经下线。");return;}
 				switch(id){
 					case 0:{
 						//这个缓存的请求是tpa还是tpahere
