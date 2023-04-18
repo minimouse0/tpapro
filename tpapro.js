@@ -1,4 +1,4 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 1, 0]);
+ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 1, 1]);
 //已经是正式版了，不用写那个
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
@@ -147,20 +147,110 @@ class vips {
 		}
 	}
 }
+
+/**
+ * 假设数据库根目录所有键值的格式相同
+ * 此基础上将数据库中的信息定为一个类，并用类的方法和属性辅助操作每个键值
+ * 数据库是一张多维的表格，在数据库中，以对象的形式，以网状的格式存储
+ * 每个类都是一个维度
+ * @param {KVDatabase} individualPreferences2
+ */
+let individualPreferences2=new KVDatabase("plugins\\tpapro\\individualPreferences")
+
+class PlayerPreference{
+	constructor(uuid,KVDBFile){
+		this.uuid=uuid;
+		this.KVDBFile=KVDBFile;
+		this.init();
+		this.data=this.KVDBFile.get(this.uuid)
+	}
+	init(){//初始化，数据更新也写在这
+		if(this.KVDBFile.get(this.uuid)==null){
+			this.KVDBFile.set(this.uuid,{})
+		}
+	}
+	/**
+	 * 
+	 * @param {string} key 
+	 * @param {any} data 
+	 */
+	set(key,data){
+		let write=this.KVDBFile.get(this.uuid)
+		write[key]=data
+		this.KVDBFile.set(this.uuid,write)
+	}
+}
+class PermissionList extends PlayerPreference{//用类继承来表示各个配置项的从属关系
+	/**
+	 * 
+	 * @param {string} uuid 玩家uuid
+	 * @param {KVDatabase} KVDBFile kvdb数据库类实例
+	 */
+	constructor(uuid,KVDBFile){
+		super(uuid,KVDBFile);
+		this.data=this.data.permissionList;
+	}
+	init(){//初始化，数据更新也写在这
+		super.init()
+		if(this.KVDBFile.get(this.uuid).permissionList==undefined){
+			super.set("permissionList",PermissionList.newPermissionList())
+		}
+	}
+	/**
+	 * 
+	 * @param {string} key 写入值的键名
+	 * @param {any} data 写入的数据
+	 */
+	set(key,data){
+		let write=this.data
+		write[key]=data
+		super.set("permissionList",write)		
+	}
+	isAllowed(uuid){
+		switch(this.data.mode){
+			case "blacklist":{
+				return !this.data.blacklist.includes(uuid);
+			}
+			case "whitelist":{
+				return this.data.whitelist.includes(uuid);
+			}
+		}
+	}
+	static newPermissionList(){
+		return {
+			mode:"blacklist",
+			whitelist:[],
+			blacklist:[]
+		}	
+	}
+}
+
+testKVDB();
+function testKVDB(){
+	let t="202304171030"
+	let tpermissionlist = new PermissionList(t,individualPreferences2)
+	//log(tpermissionlist.data.mode)
+	tpermissionlist.set("mode","whitelist")
+	//log(tpermissionlist.data.mode)
+}
+
 let PrefIndexCache={}
 RefreshPrefIndexCache()
+/** 
+ * @param {Player} origin 发起者
+ * @param {Player} target:接受者
+ * @param {string} type:可选"tpa"和"tpahere"，通过这个判断发起和接受
+ * @param {Int} time:请求被 缓存 的时间，用于检查请求是否过期，以1970年1月1日以来的毫秒数计
+ * */
 let cachedrequests = [];
-/*origin:发起者
- * target:接受者
- * type:可选"tpa"和"tpahere"，通过这个判断发起和接受
- * time:请求被 缓存 的时间，用于检查请求是否过期，以1970年1月1日以来的毫秒数计
+/**
+ * @param {Player} origin 发起者
+ * @param {Player} target 接受者
+ * @param {string} type 可选"tpa"和"tpahere"，通过这个判断发起和接受
+ * @param {Int} time 执行传送的时间
  * */
 let requestshistory = [];
-/*origin:发起者
- * target:接受者
- * type:可选"tpa"和"tpahere"，通过这个判断发起和接受
- * time:执行传送的时间
- * */
+
 let economy = new gmoney(conf.get("economy").type, conf.get("economy").object);
 let maincmd = mc.newCommand("tpa", "传送至其他玩家，或将其他玩家传送至您这里", PermType.Any);
 maincmd.setEnum("accept", ["accept","a"]);
@@ -169,6 +259,7 @@ maincmd.setEnum("here", ["here","h"]);
 maincmd.setEnum("deny", ["deny","refuse","reject","decline","denial","d"]);
 maincmd.setEnum("switch", ["switch", "s"]);
 maincmd.setEnum("to", ["to"]);
+maincmd.setEnum("requests", ["requests"]);
 maincmd.mandatory("accept", ParamType.Enum, "accept");
 maincmd.mandatory("preferences", ParamType.Enum, "preferences");
 maincmd.mandatory("here", ParamType.Enum, "here");
@@ -176,6 +267,7 @@ maincmd.mandatory("deny", ParamType.Enum, "deny");
 maincmd.mandatory("switch", ParamType.Enum, "switch");
 maincmd.mandatory("to", ParamType.Enum, "to");
 maincmd.mandatory("target", ParamType.Player)
+maincmd.mandatory("requests", ParamType.Enum,"requests")
 maincmd.overload([]);
 maincmd.overload(["to","target"]);
 maincmd.overload(["accept"]);
@@ -184,6 +276,7 @@ maincmd.overload(["here"]);
 maincmd.overload(["here","to","target"]);
 maincmd.overload(["deny"]);
 maincmd.overload(["switch"]);
+maincmd.overload(["requests"]);
 maincmd.setCallback(function(cmd,origin,output,results){
 	if (results.accept == "accept" || results.accept == "a") {//指令接受
 		if (individualpreferences.get("preferences")[getIFromPref(origin.player.uuid)].active) {
@@ -217,6 +310,7 @@ maincmd.setCallback(function(cmd,origin,output,results){
 		if (write[getIFromPref(origin.player.uuid)].active) { origin.player.tell("您已经开启了tpa功能。输入/tpa preferences来调整偏好设置。"); }
 		else { origin.player.tell("您已经关闭了tpa功能。输入/tpa switch来重新开启。"); }
 	}
+	else if (results.requests=="requests"){sendRequestsForm(origin.player)}//选择一个仍然有效的请求来接受或拒绝
 	//tpa
 	else {
 		whethertpa(origin.player,results.target,results.to=="to","tpa");
@@ -285,7 +379,7 @@ mc.listen("onJoin",(player)=>{
 				name: individualpreferences.get(player.uuid).name, 
 				active: individualpreferences.get(player.uuid).active, 
 				requestavailable: individualpreferences.get(player.uuid).requestavailable, 
-				acceptmode: individualpreferences.get(player.uuid).acceptmode 
+				acceptmode: individualpreferences.get(player.uuid).acceptmode
 			});
 			individualpreferences.set("preferences",write);	
 			RefreshPrefIndexCache()
@@ -298,7 +392,7 @@ mc.listen("onJoin",(player)=>{
 				name: player.name, 
 				active: conf.get("default_preferences").active, 
 				requestavailable: conf.get("default_preferences").requestavailable, 
-				acceptmode: conf.get("default_preferences").acceptmode 
+				acceptmode: conf.get("default_preferences").acceptmode
 			});
 			individualpreferences.set("preferences",write);		
 			RefreshPrefIndexCache()	
@@ -314,7 +408,9 @@ function tpa(player){//只有从缓存中读取请求时才会调用这个函数
 	let i;
 	let norequests=true;
 	for(i=0;i<cachedrequests.length;i++){
-		//log(cachedrequests[i].origin.name,",",cachedrequests[i].target.name)
+		if(cachedrequests[i].origin.uuid==null){
+			continue;
+		}
 		if(cachedrequests[i].target.uuid==player.uuid&&new Date().getTime()-cachedrequests[i].time<=individualpreferences.get("preferences")[getIFromPref(cachedrequests[i].origin.uuid)].requestavailable){
 			//这个缓存的请求是tpa还是tpahere
 			if(cachedrequests[i].type=="tpa"){
@@ -494,6 +590,10 @@ function tpaskform(origin,target,type){
 	if(type=="tpa"){
 		fm.setContent(`${origin.name}希望传送到您这里。`)
 		target.sendForm(fm,function(player,id){
+			if(origin.uuid==null){
+				target.tell("找不到发起请求的玩家，他可能已经下线了。")
+				return;
+			}
 			if (id == 0) {
 				fixTeleport(origin,target.pos)
 				//弹窗接受的tpa
@@ -517,6 +617,10 @@ function tpaskform(origin,target,type){
 	if(type=="tpahere"){
 		fm.setContent(`${origin.name}希望将您传送至他那里。`)
 		target.sendForm(fm,function(player,id){
+			if(origin.uuid==null){
+				target.tell("找不到发起请求的玩家，他可能已经下线了。")
+				return;
+			}
 			switch (id) {
 				case 0: {
 					fixTeleport(target,origin.pos)
@@ -546,7 +650,9 @@ function tpadeny(player){
 	let i;
 	let norequests=true;
 	for(i=0;i<cachedrequests.length;i++){
-		//log(cachedrequests[i].origin.name,",",cachedrequests[i].target.name)
+		if(cachedrequests[i].origin.uuid==null){
+			continue;
+		}
 		if(cachedrequests[i].target.uuid==player.uuid&&new Date().getTime()-cachedrequests[i].time<=individualpreferences.get("preferences")[getIFromPref(cachedrequests[i].origin.uuid)].requestavailable){
 			cachedrequests[i].origin.tell(`${cachedrequests[i].target.name}拒绝了您的请求`)
 			cachedrequests.splice(i,1);
@@ -595,6 +701,7 @@ function whethertpa(origin,targetarr,to,type){
 				origin.tell("发送tpa请求过于频繁，请稍后再试");
 				break limits;
 			}
+			//在这里加上黑白名单判断
 			if (economy.get(origin) < conf.get("economy").price && conf.get("economy").price > 0) {
 				origin.tell(`您的余额不足，本服务器中tpa传送需花费${conf.get("economy").price}${conf.get("economy").name}`);
 				break limits;
@@ -607,18 +714,21 @@ function whethertpa(origin,targetarr,to,type){
 		origin.tell("您未开启tpa。输入/tpa switch来开启。")
 	}
 }
+
 function fixTeleport(player,pos){
 	let target=pos;
 	let threatBlock=mc.getBlock(pos.x-1,pos.y+1,pos.z-1,pos.dimid);
-	log(threatBlock.name)
-	log(threatBlock.isAir.toString())
-	log(threatBlock.pos)
 	if(!threatBlock.isAir){
 		target=new FloatPos(pos.x,pos.y-1.5,pos.z,pos.dimid)
 	}
 	player.teleport(target);
 }
-function toooften(player) {
+/**
+ * 
+ * @param {Player} player 要判断是否频繁的玩家
+ * @returns 是否频繁
+ */
+function toooften(player) {//判断是否频繁传送
 	let times = 0,i=0;
 	for (i = 0; i < requestshistory.length; i++) {
 		if (player.uuid == requestshistory[i].origin.uuid) {
@@ -632,6 +742,36 @@ function toooften(player) {
 }
 
 ll.export(toooften, "tpapro", "tpaFrequently");
+
+/**
+ * 向指定玩家发送选择tpa请求的表单
+ * @param {Player} player 要发送表单的目标玩家
+ */
+function sendRequestsForm(player){
+	/**
+	 * @param {Array<Request>} availableRequests 对于这个玩家目前可用的请求列表
+	 */
+	let availableRequests=[]
+	cachedrequests.forEach((currentValue)=>{//生成availableRequests
+		if(currentValue.origin.uuid!=null){
+			if(currentValue.target.uuid==player.uuid && new Date().getTime()-currentValue.time<=individualpreferences.get("preferences")[getIFromPref(currentValue.origin.uuid)].requestavailable){
+				availableRequests.push(currentValue);
+			}
+		}
+	})	
+	let fm=mc.newSimpleForm();
+	//生成并发送表单部分
+	fm.setTitle("选择一个请求")
+	fm.setContent("选择一个请求，并决定是否接受")
+	availableRequests.forEach((currentValue)=>{
+		fm.addButton("类型:"+currentValue.type+" 发起者:"+currentValue.origin.name+"\n"+(individualpreferences.get("preferences")[getIFromPref(currentValue.origin.uuid)].requestavailable-(new Date().getTime()-currentValue.time))/1000+"秒内有效");
+		
+	})
+	player.sendForm(fm,(player,id)=>{
+		
+	})
+}
+
 function payForFrequency(player,type) {
 
 }
@@ -676,10 +816,9 @@ function checkIndivPrefVersion() {
 	let version = 1;
 	let trial;
 	check: {
-		/*if (individualpreferences.get("preferences") == null) {
-			version = 1;
+		if (individualpreferences.get("preferences") == null) {
 			break check;
-		}*/
+		}
 		//如果要对preferences检测，需注意preferences是一个一个数组且可能为空
 		version = currentIndivPrefVersion;
 	}
@@ -692,7 +831,14 @@ function updateConfVersion(origin, target) {
 		switch (current) {
 			case 1: {
 				write = conf.get("economy");
-				write = { type: write.type, object: write.object, price: write.price, vip_free: write.vip_free, vip_discount: write.vip_discount, name: "积分" }
+				write = { 
+					type: write.type,
+					object: write.object,
+					price: write.price,
+					vip_free: write.vip_free,
+					vip_discount: write.vip_discount,
+					name: "积分" 
+				}
 				conf.set("economy", write)
 				current++;
 				break;
@@ -715,12 +861,21 @@ function updateIndivPrefVersion(origin, target) {
 					currentuuid = currentValue.slice(1, currentValue.length - 4);
 					modifyarray[index]=currentValue.slice(1, currentValue.length - 4);
 					targetarray.push(individualpreferences.get(currentValue.slice(1, currentValue.length - 4)));
-					targetarray[index] = { name: individualpreferences.get(currentuuid).name, active: individualpreferences.get(currentuuid).active, requestavailable: individualpreferences.get(currentuuid).requestavailable, acceptmode: individualpreferences.get(currentuuid).acceptmode , uuid:currentuuid};
+					targetarray[index] = { 
+						name: individualpreferences.get(currentuuid).name, 
+						active: individualpreferences.get(currentuuid).active, 
+						requestavailable: individualpreferences.get(currentuuid).requestavailable, 
+						acceptmode: individualpreferences.get(currentuuid).acceptmode , 
+						uuid:currentuuid
+					};
 					individualpreferences.delete(currentValue.slice(1, currentValue.length - 4));
 				})
 				individualpreferences.init("preferences", targetarray);
 				current++;
 				break;
+			}
+			case 2:{
+				write = conf.get("economy");
 			}
 		}
 	}
