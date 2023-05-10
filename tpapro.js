@@ -1,5 +1,146 @@
-ll.registerPlugin("tpapro", "tpapro发行版-专注于解决社区常见tpa问题", [1, 2, 0]);
+//插件注册
+const PLUGIN_NAME="tpapro";
+ll.registerPlugin(PLUGIN_NAME, "tpapro发行版-专注于解决社区常见tpa问题", [1, 3, 0]);
 //已经是正式版了，不用写那个
+
+//////listenAPI.js///////
+let eventCatalog={};
+let serverStarted=false;
+let tryrereg=[]
+/**
+ * LLSE插件间监听器类
+ */
+class Listener{
+    /**
+     * 
+     * @param {string} name 事件名
+     */
+    constructor(name){
+        this.listenerList=[];
+        eventCatalog[name]=this;
+        //ll.export(this.regListenTest,namespace,name)
+    }
+    /**
+     * 初始化当前插件的所有监听器
+     * @param {string} pluginname 本插件的插件名
+     */
+    static init(pluginname){
+        ll.export((namespace,name)=>{
+            let obj=eventCatalog[name]
+            let newlistener=ll.import(namespace,name)
+            let i;//因为for i报错i is not defined
+            for(i in obj.listenerList){
+                if(obj.listenerList[i].namespace==namespace&&obj.listenerList[i].name==name){
+                    obj.listenerList.splice(i,1);break;
+                }
+            }//相同名称，导出函数相同
+            obj.listenerList.push({
+                callback:newlistener,
+                namespace:namespace,
+                name:name
+            });
+        },pluginname,"EventListener")
+    }/**
+     * 监听事件
+     * @param {string} listenedPluginName 要监听的插件名
+     * @param {string} pluginName 当前插件的插件名
+     * @param {string} eventname 要监听的事件名
+     * @param {function} callback 回调函数，返回一个布尔可作为判断是否要拦截事件
+     */
+    static on(listenedPluginName,pluginName,eventname,callback){
+        if(!serverStarted&&!ll.listPlugins().includes(listenedPluginName)){
+            //logger.warn("监听器注册失败，被监听插件可能未加载完毕，服务器开启后将再次尝试注册")
+            tryrereg.push({
+                listenedPluginName:listenedPluginName,
+                pluginName:pluginName,
+                eventname:eventname,
+                callback:callback
+            })
+            return;
+        }
+        ll.import(listenedPluginName,"EventListener")(pluginName,eventname);
+        ll.export(callback,pluginName,eventname) 
+    }/**
+     * 执行监听的插件的回调函数
+     * @param {any} arg 回调函数传入的参数，因作者技术有限目前最多支持10个，后面所有变量均可作为可选，如有需要可修改源码此处参数
+     * @returns 
+     */
+    exec(args,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9,arg10){
+        //开始执行监听
+        let returned=true;
+        let i;
+        for(i in this.listenerList){
+            if(this.listenerList[i].callback!=undefined&&ll.hasExported(this.listenerList[i].namespace,this.listenerList[i].name)){
+                if(this.listenerList[i].callback(args,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9,arg10)==false){returned=false;}
+            }        
+        }
+        return returned;
+    }
+}
+//在被监听插件里面需要这个onServerStarted吗？我也不知道
+mc.listen("onServerStarted",()=>{
+    serverStarted=true;
+    tryrereg.forEach((currentValue)=>{
+        if(ll.listPlugins().includes(currentValue.listenedPluginName)){
+            Listener.on(currentValue.listenedPluginName,currentValue.pluginName,currentValue.eventname,currentValue.callback)            
+        }
+        else{
+            logger.error("监听器注册失败，被监听插件未加载")
+        }         
+    }) 
+})
+/////////////////////////
+
+////////gmoney///////////
+//这个类用于对接多种经济核心
+/**
+ * 使用方法  
+ * 不要new money，因为llmoney就有个类叫money  
+ * 假如需要一个叫usd的gmoney对象  
+ * let usd = new gmoney(type,object)type填经济核心名，object如果核心是scoreboard就填计分项，如果是llmoney就不用填  
+ * set(player,value)player是玩家对象，value是要设置的钱数  
+ * */
+class gmoney {
+	constructor(type, object) {
+		this.type = type;
+		this.object = object;
+	}
+	set(player, value) {
+		if (this.type == "llmoney") {
+			money.set(player.xuid, value);
+		} else if (this.type == "scoreboard") {
+			let scoreboard = mc.getScoreObjective(this.object);
+			scoreboard.setScore(player, value)
+		}
+	}
+	reduce(player, value) {
+		if (this.type == "llmoney") {
+			money.reduce(player.xuid, value);
+		} else if (this.type == "scoreboard") {
+			let scoreboard = mc.getScoreObjective(this.object);
+			scoreboard.reduceScore(player, value)
+		}
+	}
+	get(player) {
+		switch (this.type) {
+			case "scoreboard": {
+				return player.getScore(this.object);
+				break;
+			}
+			case "llmoney": {
+				return money.get(player.xuid);
+				break;
+			}
+			case "TMEssential": {
+				let func = ll.import("TMETApi", "getMoney");
+				return func(player.realName);
+			}
+		}
+	}
+}
+/////////////////////////
+
+
 const individualpreferences = new JsonConfigFile("plugins\\tpapro\\individualpreferences.json");
 const conf = new JsonConfigFile("plugins\\tpapro\\config.json");
 //初始化config.json
@@ -61,51 +202,7 @@ if (indivPrefVersion < currentIndivPrefVersion) {
 	log(`更新完成，当前协议：${checkIndivPrefVersion()}`)
 }
 
-//这个类用于对接多种经济核心
-/*使用方法
- * 不要new money，因为llmoney就有个类叫money
- * 假如需要一个叫usd的gmoney对象
- * let usd = new gmoney(type,object)type填经济核心名，object如果核心是scoreboard就填计分项，如果是llmoney就不用填
- * set(player,value)player是玩家对象，value是要设置的钱数
- * */
-class gmoney {
-	constructor(type, object) {
-		this.type = type;
-		this.object = object;
-	}
-	set(player, value) {
-		if (this.type == "llmoney") {
-			money.set(player.xuid, value);
-		} else if (this.type == "scoreboard") {
-			let scoreboard = mc.getScoreObjective(this.object);
-			scoreboard.setScore(player, value)
-		}
-	}
-	reduce(player, value) {
-		if (this.type == "llmoney") {
-			money.reduce(player.xuid, value);
-		} else if (this.type == "scoreboard") {
-			let scoreboard = mc.getScoreObjective(this.object);
-			scoreboard.reduceScore(player, value)
-		}
-	}
-	get(player) {
-		switch (this.type) {
-			case "scoreboard": {
-				return player.getScore(this.object);
-				break;
-			}
-			case "llmoney": {
-				return money.get(player.xuid);
-				break;
-			}
-			case "TMEssential": {
-				let func = ll.import("TMETApi", "getMoney");
-				return func(player.realName);
-			}
-		}
-	}
-}
+
 //导入其他插件
 let pcsvipfunc;
 mc.listen("onServerStarted", () => {
@@ -247,7 +344,16 @@ let cachedrequests = [];
  * */
 let requestshistory = [];
 
+///////注册监听器//////
+let tpaAskEvent=new Listener("ontpaproTpaAsk");
+let tpaEvent=new Listener("ontpaproTpa")
+Listener.init(PLUGIN_NAME);
+
 let economy = new gmoney(conf.get("economy").type, conf.get("economy").object);
+
+let playersNotIgnored=[];
+
+///////指令注册///////
 let maincmd = mc.newCommand("tpa", "传送至其他玩家，或将其他玩家传送至您这里", PermType.Any);
 maincmd.setEnum("accept", ["accept","a"]);
 maincmd.setEnum("preferences", ["preferences","p"]);
@@ -290,6 +396,7 @@ maincmd.setCallback(function(cmd,origin,output,results){
 			origin.player.tell("您未开启tpa。输入/tpa switch来开启。")
 		}
 	}
+	//tpa设置
 	else if (results.preferences == "preferences"||results.preferences == "p") {
 		individualpreferencesform(origin.player);
 	}
@@ -365,7 +472,7 @@ mgrcmd.setup();
 
 //初始化玩家的偏好设置
 mc.listen("onJoin",(player)=>{
-	if(player.isSimulatedPlayer()){return;}
+	if(playerIsIgnored(player)){return;}
 	if(getIFromPref(player.uuid)==null){//找不到玩家的信息
 		if(individualpreferences.get(player.uuid)!=null){//在根目录中找到了未迁移玩家的信息
 			log(`玩家${player.name}的数据未迁移！正在迁移该玩家的数据`);
@@ -432,6 +539,15 @@ function tpa(player){//只有从缓存中读取请求时才会调用这个函数
 	}
 	if(norequests==true){player.tell(`最近没有收到任何tpa请求。`);}
 }
+
+/**
+ * 玩家选择请求目标的表单  
+ * 需要注意目前共有两种方法能够让玩家选择目标  
+ * 一种是这个表单  
+ * 另一个是指令+目标选择器
+ * @param {Player} player 请求此选择表单的玩家
+ * @param {string} type tpa种类
+ */
 function tpaform(player,type){
 	let fm = mc.newSimpleForm()
 	if (type == "tpa") {
@@ -442,7 +558,7 @@ function tpaform(player,type){
 	}
 	let onlineplayers = []
 	mc.getOnlinePlayers().forEach(pl => {
-		if(pl.isSimulatedPlayer()){return;}//自动跳过假人
+		if(playerIsIgnored(pl)){return;}//自动跳过假人
 		onlineplayers.push(pl)
 	})
 	onlineplayers.forEach(function (item, index, arr) {
@@ -469,7 +585,16 @@ function tpaform(player,type){
 	}
 }
 
+/** 
+ * 向tpa目标发起询问  
+ *   
+ * tpa发起后，共有三种方式，一种是自动接受，直接在tpask里面，一种是弹窗提醒，在tpaskform里面，一种是指令接受，要从指令开始找
+ * @param {Player} player 请求目标
+ * @param {Player} origin 请求发起者
+ * @param {string} type tpa种类，可选"tpa"或"tpahere"
+ */
 function tpask(player,origin,type){
+	if(!tpaAskEvent.exec(player,origin,type)){return;}
 	switch(individualpreferences.get("preferences")[getIFromPref(player.uuid)].acceptmode){
 		case 1:{//弹窗提醒
 			tpaskform(origin, player, type);
@@ -578,6 +703,13 @@ function individualpreferencesform(player){
 		}
 	})
 }
+
+/** 
+ * 弹窗提醒情况下向tpa目标发起询问的表单
+ * @param {Player} player 请求目标
+ * @param {Player} origin 请求发起者
+ * @param {string} type tpa种类，可选"tpa"或"tpahere"
+ */
 function tpaskform(origin,target,type){
 	let fm=mc.newSimpleForm();
 	fm.addButton("接受")
@@ -941,6 +1073,23 @@ function updateIndivPrefVersion(origin, target) {
 		}
 	}
 }
+
+/**
+ * 检查玩家是否要被忽略
+ * @param {Player} player 要检查的玩家
+ * @returns 是否被忽略
+ */
+function playerIsIgnored(player){
+	for(let i in playersNotIgnored){
+		if(player==playersNotIgnored[i]){
+			return false;
+		}
+	}
+	if(player.isSimulatedPlayer()){
+		return true;
+	}
+	return false;
+}
 function tpaHistory() {
 	return requestshistory;
 }
@@ -949,9 +1098,87 @@ function tpaRequests() {
 	return cachedrequests;
 }
 ll.export(tpaRequests, "tpapro", "tpaRequests");
+/**
+ * 获取玩家偏好设置
+ * @param {string} uuid 玩家的uuid，如果只有其他数据请用LLSE的内置接口转换
+ * @returns 玩家设置的对象
+ */
+function getPlayerPref(uuid){return individualpreferences.get("preferences")[getIFromPref(uuid)];}
+ll.export(getPlayerPref, "tpapro", "getPlayerPref");
+/**
+ * 写入玩家偏好设置  
+ * 请注意，该接口是直接覆盖玩家的设置  
+ * 所以在使用时，请先获取玩家的偏好设置，在其基础上修改后再写入
+ * @param {string} uuid 玩家的uuid
+ * @param {object} pref 玩家的偏好设置对象
+ */
+function writePlayerPref(uuid,pref){
+	let write=individualpreferences.get("preferences")
+	write[getIFromPref(uuid)]=pref;
+	individualpreferences.set("preferences",write)
+}
+ll.exports(writePlayerPref,"tpapro","writePlayerPref")
+/**
+ * 通过UUID初始化玩家偏好设置
+ * @param {string} uuid 玩家UUID
+ * @param {string} callbackPlName 插件名
+ * @param {string} callbackPlFnName 导出的回调函数在LLSE中的函数名
+ */
+async function initPlayerPref(uuid,callbackPlName,callbackPlFnName){
+	let name=uuid2name(uuid);
+	if(name==null){name="not specified";}
+	if(getIFromPref(uuid)==null){//找不到玩家的信息
+		if(individualpreferences.get(uuid)!=null){//在根目录中找到了未迁移玩家的信息
+			log(`玩家${name}的数据未迁移！正在迁移该玩家的数据`);
+			let write = individualpreferences.get("preferences");
+			write.push({ 
+				uuid: uuid,
+				name: individualpreferences.get(uuid).name, 
+				active: individualpreferences.get(uuid).active, 
+				requestavailable: individualpreferences.get(uuid).requestavailable, 
+				acceptmode: individualpreferences.get(uuid).acceptmode
+			});
+			individualpreferences.set("preferences",write);	
+			RefreshPrefIndexCache()
+			individualpreferences.delete(uuid);			
+		}
+		else{//都没找到，证明该玩家第一次进服
+			let write = individualpreferences.get("preferences");
+			write.push({ 
+				uuid: uuid,
+				name: name, 
+				active: conf.get("default_preferences").active, 
+				requestavailable: conf.get("default_preferences").requestavailable, 
+				acceptmode: conf.get("default_preferences").acceptmode
+			});
+			individualpreferences.set("preferences",write);		
+			RefreshPrefIndexCache()	
+		}
+	}
+	if(callbackPlName!=undefined&&callbackPlFnName!=undefined){
+		ll.imports(callbackPlName,callbackPlFnName)();
+	}
+}
+ll.exports(initPlayerPref,"tpapro","initPlayerPref");
+/**
+ * 添加忽略条件的赦免玩家
+ * @param {Player} player 要被赦免的玩家
+ */
+function addNotIgnoredPlayer(player){playersNotIgnored.concat([player]);}
+ll.export(addNotIgnoredPlayer,"tpapro","addNotIgnoredPlayer");
+function uuid2name(uuid){
+	let allInfo=data.getAllPlayerInfo();
+	for(let i in allInfo){
+		if(allInfo[i].uuid==uuid){
+			return allInfo[i].name;
+		}
+	}
+	return null;
+}
 
 /*
  * 即将推出
+不会加到tpapro中了，会作为扩展加入
 可设置频率过快才消耗经济
 对接一些权限组插件，vip用户可以不受频率限制或享受折扣
 多语言
