@@ -1,0 +1,6 @@
+[submodule "lib"]
+	path = lib
+	url = https://github.com/231software/fmplib
+[submodule "libs/LNSDK"]
+	path = libs/LNSDK
+	url = https://github.com/231software/LNSDK.git

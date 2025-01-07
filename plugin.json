@@ -1,0 +1,20 @@
+{
+    "name":"tpapro",
+    "main":"index",
+    "description":"tpa专业户，提供强大、可充分自定义的tpa功能",
+    "build_dir":"dist",
+    "data_path":"tpapro",
+    "src_dir":"src",
+    "plugin_dir_name":"tpapro",
+    "supported_platforms":{
+        "mode":"bl",
+        "list":["esjse"]
+    },
+    "permissionRoot":"tpapro",
+    "features":[],
+    "priorities":{
+        "default":[
+            "LNSDK"
+        ]
+    }
+}
