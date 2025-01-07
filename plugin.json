@@ -11,7 +11,9 @@
         "list":["esjse"]
     },
     "permissionRoot":"tpapro",
-    "features":[],
+    "features":[
+        "yaml"
+    ],
     "priorities":{
         "default":[
             "LNSDK"
