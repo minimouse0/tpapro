@@ -1,6 +1,20 @@
-import { Command,CommandEnum,CommandEnumOptions,CommandExecutor,CommandExecutorType,CommandParam,CommandParamDataType, CommandParamType, CommandResult, InternalPermission, Logger, Player } from "../lib";
+import {
+    Command,
+    CommandEnum, 
+    CommandEnumOptions, 
+    CommandExecutor, 
+    CommandExecutorType, 
+    CommandParam, 
+    CommandParamDataType, 
+    CommandParamType, 
+    CommandResult, 
+    InternalPermission, 
+    Logger, 
+    Player
+} from "../lib";
 import { db,PlayerPreference } from "./data";
 import { conf } from "./conf";
+import { acceptLatestTpaRequest } from "./tp";
 
 function tellExecutor(executor:CommandExecutor,msg:string){
     switch(executor.type){
@@ -35,7 +49,7 @@ class maincmd extends Command{
         const player:Player=result.executor.object
         //指令接受
         if (result.params.get("accept")?.value == "accept" || result.params.get("accept")?.value == "a") {//指令接受
-            if (new PlayerPreference(player.uuid,db).data.get("active")) tpa(player);
+            if (new PlayerPreference(player.uuid,db).data.get("active")) acceptLatestTpaRequest(player);
             else player.tell("您未开启tpa。输入/tpa switch来开启。");
         }
         //指令拒绝

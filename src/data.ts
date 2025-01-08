@@ -1,5 +1,6 @@
-import { SQLDataType, SQLDataTypeEnum, SQLite3 } from "../lib";
+import { Currency, SQLDataType, SQLDataTypeEnum, SQLite3 } from "../lib";
 import { data_path } from "../lib/plugin_info.js"
+import { conf } from "./conf.js";
 
 export const db=new SQLite3(data_path+"/data.db")
 
@@ -86,3 +87,24 @@ class PermissionList extends PlayerPreference{//用类继承来表示各个配�
 		}	
 	}
 }
+
+export enum AcceptMode{
+	Auto,
+	Form,
+	Command
+}
+
+function getAcceptMode(mode:number):AcceptMode{
+	switch(mode){
+		case 0:return AcceptMode.Auto;
+		case 1:return AcceptMode.Form;
+		case 2:return AcceptMode.Command;
+		default:throw new Error("Invalid AcceptMode");
+	}
+}
+
+export function getPlayerAcceptMode(playerPreference:PlayerPreference):AcceptMode{
+	return getAcceptMode(playerPreference.data.get("accept_mode"));
+}
+
+export const economy = new Currency(conf.get("economy").object);
