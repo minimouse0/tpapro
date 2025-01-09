@@ -14,7 +14,8 @@ import {
 } from "../lib";
 import { db,PlayerPreference } from "./data";
 import { conf } from "./conf";
-import { acceptLatestTpaRequest } from "./tp";
+import { acceptLatestTpaRequest, tpadeny, TpaType, whethertpa } from "./tp";
+import { individualPreferencesForm, sendRequestsForm } from "./form";
 
 function tellExecutor(executor:CommandExecutor,msg:string){
     switch(executor.type){
@@ -58,9 +59,9 @@ class maincmd extends Command{
             else player.tell("您未开启tpa。输入/tpa switch来开启。")
         }
         //tpa设置
-        else if (result.params.get("preferences")?.value == "preferences" || result.params.get("preferences")?.value == "p") individualpreferencesform(player);
+        else if (result.params.get("preferences")?.value == "preferences" || result.params.get("preferences")?.value == "p") individualPreferencesForm(player);
         //tpahere
-        else if (result.params.get("here")?.value == "here" || result.params.get("here")?.value == "h") whethertpa(player,result.params.get("target")?.value,result.params.get("to")?.value=="to","tpahere");
+        else if (result.params.get("here")?.value == "here" || result.params.get("here")?.value == "h") whethertpa(player,result.params.get("target")?.value,result.params.get("to")?.value=="to",TpaType.TPAHERE);
         //tpa开关
         else if (result.params.get("switch")?.value == "switch" || result.params.get("switch")?.value == "switch") {
             //反转active状态
@@ -75,7 +76,7 @@ class maincmd extends Command{
         else if (result.params.get("here")?.value=="requests"||result.params.get("here")?.value=="r"){sendRequestsForm(player)}
         //tpa
         else {
-            whethertpa(player,result.params.get("to")?.value=="to","tpa");
+            whethertpa(player,result.params.get("target")?.value,result.params.get("to")?.value=="to",TpaType.TPA);
         }
     }
 }

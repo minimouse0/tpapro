@@ -19,7 +19,7 @@ import { Player ,
     SimpleFormButton,
     SimpleFormButtonType
 } from "../lib";
-import {playerIsIgnored, toooften, TPATYPE} from "./tp";
+import {playerIsIgnored, tooOften, TpaType} from "./tp";
 import { db, economy, PlayerPreference } from "./data";
 import {tpask,cachedRequests,requestsHistory,tpaRequest,fixTeleport} from "./tp"
 import { conf } from "./conf";
@@ -98,12 +98,12 @@ function checkAndFixRequestAvailableTime(time:number):{
 
 
 
-export function tpaForm(player:Player,type:TPATYPE){
+export function tpaForm(player:Player,type:TpaType){
     const preference=new PlayerPreference(player.uuid,db)
     let title:string
     switch(type){
-        case TPATYPE.TPA: title="选择要传送到的玩家";break;
-        case TPATYPE.TPAHERE: title="选择要传送过来的玩家";break;
+        case TpaType.TPA: title="选择要传送到的玩家";break;
+        case TpaType.TPAHERE: title="选择要传送过来的玩家";break;
         default:throw new Error("请联系插件开发者为tpa表单处添加处理新tpa类型枚举的实现！")
     }
     const onlinePlayers = Player.getAllOnline();
@@ -129,17 +129,17 @@ export function tpaForm(player:Player,type:TPATYPE){
  * @param origin 请求发起者
  * @param type tpa种类，可选"tpa"或"tpahere"
  */
-export function tpaskForm(origin:Player,target:Player,type:TPATYPE){
+export function tpaskForm(origin:Player,target:Player,type:TpaType){
     const preference=new PlayerPreference(origin.uuid,db)
-    new SimpleFormSession(new SimpleForm("",type==TPATYPE.TPA?`${origin.name}希望传送到您这里。`:`${origin.name}希望将您传送至他那里。`,[
+    new SimpleFormSession(new SimpleForm("",type==TpaType.TPA?`${origin.name}希望传送到您这里。`:`${origin.name}希望将您传送至他那里。`,[
         new SimpleFormButton("接受","接受",session=>{
             if(!origin.isOnline()){
                 target.tell("找不到发起请求的玩家，他可能已经下线了。")
                 return;
             }
-            type==TPATYPE.TPA?fixTeleport(origin,target.location):fixTeleport(target,origin.location)
+            type==TpaType.TPA?fixTeleport(origin,target.location):fixTeleport(target,origin.location)
             //弹窗接受的tpa
-            if (toooften(origin)) {
+            if (tooOften(origin)) {
                 economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
             }
             requestsHistory.unshift({ origin, target, type, time: new Date()});
@@ -171,7 +171,7 @@ export function tpaskForm(origin:Player,target:Player,type:TPATYPE){
  * 向指定玩家发送选择tpa请求的表单
  * @param {Player} player 要发送表单的目标玩家
  */
-function sendRequestsForm(player: Player){
+export function sendRequestsForm(player: Player){
     /**
      * @param {Array<Request>} availableRequests 对于这个玩家目前可用的请求列表
      */
@@ -240,10 +240,10 @@ export function sendOperateRequestForm(chosenRequest:tpaRequest,player:Player){
             if(chosenRequest.origin.uuid==null){player.tell("没有找到请求发起者，该玩家可能已经下线。");return;}
             //这个缓存的请求是tpa还是tpahere
             switch(chosenRequest.type){
-                case TPATYPE.TPA:fixTeleport(chosenRequest.origin,chosenRequest.target.location);break;
-                case TPATYPE.TPAHERE:fixTeleport(chosenRequest.target,chosenRequest.origin.location);break;
+                case TpaType.TPA:fixTeleport(chosenRequest.origin,chosenRequest.target.location);break;
+                case TpaType.TPAHERE:fixTeleport(chosenRequest.target,chosenRequest.origin.location);break;
             }
-            if (toooften(chosenRequest.origin)) {
+            if (tooOften(chosenRequest.origin)) {
                 economy.reduce(chosenRequest.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
             }				
             economy.reduce(chosenRequest.origin.uuid, conf.get("economy").price);//基础价格

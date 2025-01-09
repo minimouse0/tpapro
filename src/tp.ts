@@ -1,9 +1,9 @@
-import { Player,Location } from "../lib";
+import { Player,Location, ModalFormSession, ModalForm } from "../lib";
 import { conf } from "./conf";
 import { AcceptMode, db,economy,getPlayerAcceptMode,PlayerPreference } from "./data";
 import { tpaForm, tpaskForm } from "./form";
 
-export enum TPATYPE{
+export enum TpaType{
     TPA,
     TPAHERE
 }
@@ -14,7 +14,7 @@ export interface tpaRequest{
     /**接受者 */
     target:Player,
     /**通过这个判断发起和接受 */
-    type:TPATYPE,
+    type:TpaType,
     /**请求被**缓存**的时间，用于检查请求是否过期，以1970年1月1日以来的毫秒数计 */
     time:Date
 }
@@ -29,8 +29,7 @@ export const requestsHistory:tpaRequest[] = [];
 export function acceptLatestTpaRequest(player:Player){
 	let norequests=true;
     //遍历已有请求寻找属于该玩家的已缓存请求
-	for(let i in cachedRequests){
-        const cachedRequest=cachedRequests[i]
+	for(let cachedRequest of cachedRequests){
         //检测是否已经下线
 		if(!cachedRequest.origin.isOnline())continue;
         //如果请求的接受者是这个玩家，且请求未过期
@@ -41,7 +40,7 @@ export function acceptLatestTpaRequest(player:Player){
         ){
             //做完当前请求
             completeRequest(cachedRequest);
-            cachedRequests.splice(Number(i),1);
+            cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
             norequests = false;
             break;
 		}
@@ -57,10 +56,10 @@ export function completeRequest(request:tpaRequest){
 
     //这个缓存的请求是tpa还是tpahere
     switch(request.type){
-        case TPATYPE.TPA:fixTeleport(request.origin,request.target.location)
-        case TPATYPE.TPAHERE:fixTeleport(request.target,request.origin.location)
+        case TpaType.TPA:fixTeleport(request.origin,request.target.location)
+        case TpaType.TPAHERE:fixTeleport(request.target,request.origin.location)
     }
-    if (toooften(request.origin)) economy.reduce(request.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
+    if (tooOften(request.origin)) economy.reduce(request.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
     //requestshistory指令接受
     //在请求历史中压入刚刚执行的请求
     requestsHistory.unshift(request);
@@ -84,7 +83,7 @@ export function completeRequest(request:tpaRequest){
  * @param origin 请求发起者
  * @param type tpa种类，可选"tpa"或"tpahere"
  */
-export function tpask(player:Player,origin:Player,type:TPATYPE){
+export function tpask(player:Player,origin:Player,type:TpaType){
     const preference=new PlayerPreference(player.uuid,db)
     //触发其他插件事件
     //if(!tpaAskEvent.exec(player,origin,type)){return;}
@@ -93,8 +92,8 @@ export function tpask(player:Player,origin:Player,type:TPATYPE){
         case AcceptMode.Form:tpaskForm(origin, player, type);break;
         case AcceptMode.Command:{//指令接受
             switch(type) {
-                case TPATYPE.TPA:player.tell(`${origin.name}希望传送到您这里。`);break;
-                case TPATYPE.TPAHERE:player.tell(`${origin.name}希望将您传送至他那里。`);break;
+                case TpaType.TPA:player.tell(`${origin.name}希望传送到您这里。`);break;
+                case TpaType.TPAHERE:player.tell(`${origin.name}希望将您传送至他那里。`);break;
             }
             player.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
             player.tell(`输入/tpa preferences来管理此通知。`)
@@ -104,10 +103,10 @@ export function tpask(player:Player,origin:Player,type:TPATYPE){
         }
         case AcceptMode.Auto:{//自动接受
             switch(type){
-                case TPATYPE.TPA:fixTeleport(origin,player.location);break;
-                case TPATYPE.TPAHERE:fixTeleport(player,origin.location);break;
+                case TpaType.TPA:fixTeleport(origin,player.location);break;
+                case TpaType.TPAHERE:fixTeleport(player,origin.location);break;
             }
-            if (toooften(origin)) economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
+            if (tooOften(origin)) economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
             requestsHistory.unshift({ origin: origin, target: player, type: type, time: new Date()});
             economy.reduce(origin.uuid, conf.get("economy").price);
             break;
@@ -115,11 +114,29 @@ export function tpask(player:Player,origin:Player,type:TPATYPE){
     }
 }
 
+
+export function tpadeny(player:Player){
+    const preference=new PlayerPreference(player.uuid,db)
+	let norequests=true;
+	for(let request of cachedRequests){
+		if(request.origin.uuid==null){
+			continue;
+		}
+		if(request.target.uuid==player.uuid&&
+            new Date().getTime()-request.time.getTime()<=preference.data.get("request_available")){
+			request.origin.tell(`${request.target.name}拒绝了您的请求`)
+			cachedRequests.splice(cachedRequests.indexOf(request),1);
+			norequests=false;
+			break;
+		}
+	}
+	if(norequests==true){player.tell(`最近没有任何可以拒绝的tpa请求。`);}
+}
+
 function denyLatestTpaRequest(player:Player){
     const preference=new PlayerPreference(player.uuid,db)
     let norequests=true;
-    for(let i in cachedRequests){
-        const cachedRequest=cachedRequests[i];
+    for(let cachedRequest of cachedRequests){
         //检测是否已经下线
         if(!cachedRequest.origin.isOnline())continue;
         if( cachedRequest.target.uuid == player.uuid&&new Date().getTime()-cachedRequest.time.getTime()
@@ -127,14 +144,14 @@ function denyLatestTpaRequest(player:Player){
         preference.data.get("requestavailable")
         ){
             cachedRequest.origin.tell(`${cachedRequest.target.name}拒绝了您的请求`)
-            cachedRequests.splice(Number(i),1);
+            cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
             norequests=false;
             break;
         }
     }
     if(norequests)player.tell(`最近没有任何可以拒绝的tpa请求。`);
 }
-function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,type:TPATYPE){
+function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
     //执行tpa或tpahere
     if (to) {
         if (targetarr.length==0) origin.tell("没有匹配的对象");
@@ -143,7 +160,7 @@ function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,type:TPA
     }
     else tpaForm(origin,type);//让玩家选择tpa的对象。最终目标也是tpask()
 }
-function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TPATYPE){
+export function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
     const preference=new PlayerPreference(origin.uuid,db)
     if (!preference.data.get("active")){
         origin.tell("您未开启tpa。输入/tpa switch来开启。")
@@ -153,22 +170,15 @@ function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TPATYPE){
     //vip专属逻辑、tpa禁区可以直接写在前面这里
     //目前vip需要折扣、免费、不受频率限制，频繁后不加价或加价部分折扣
     //vip的扣费还是需要写在后面，这里只写检查余额
-    if (conf.get("frequency_limit").active && toooften(origin) && conf.get("frequency_limit").limit_price > 0) {//频繁且付费
+    if (conf.get("frequency_limit").active && 
+        tooOften(origin) && conf.get("frequency_limit").limit_price > 0
+    ) {//频繁且付费
         //频繁后可以付费
         //特殊位置，单独写一份
-        origin.sendModalForm("发送tpa请求过于频繁", `发送tpa请求过于频繁！暂时您需要花费${conf.get("frequency_limit").limit_price + conf.get("economy").price}${conf.get("economy").name}才能继续传送。`, "继续", "取消", function (player, result) {
-            if (result) {
-                if (economy.get(player) < conf.get("economy").price + conf.get("frequency_limit").limit_price) {
-                    player.tell("您的余额不足");
-                } else {
-                    //执行tpa
-                    checkTpaConditions(player,targetarr,to,type);
-                }
-            }
-        });
+        sendPayForFrequentlyTPForm(origin,targetarr,to,type)
         return
     }
-    else if (conf.get("frequency_limit").active && toooften(origin) && conf.get("frequency_limit").limit_price <= 0) {
+    else if (conf.get("frequency_limit").active && tooOften(origin) && conf.get("frequency_limit").limit_price <= 0) {
         origin.tell("发送tpa请求过于频繁，请稍后再试");
         return 
     }
@@ -181,6 +191,21 @@ function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TPATYPE){
     checkTpaConditions(origin,targetarr,to,type);
 }
 
+function sendPayForFrequentlyTPForm(player:Player,targets:Player[],to:boolean,type:TpaType){
+    new ModalFormSession(new ModalForm(
+        "发送tpa请求过于频繁",
+        `发送tpa请求过于频繁！暂时您需要花费${conf.get("frequency_limit").limit_price + conf.get("economy").price}${conf.get("economy").name}才能继续传送。`,
+        session=>{
+            if (economy.get(player.uuid) < conf.get("economy").price + conf.get("frequency_limit").limit_price) {
+                player.tell("您的余额不足");
+            } else {
+                //执行tpa
+                checkTpaConditions(player,targets,to,type);
+            }
+        },false,"继续","取消"
+    ),player)
+}
+
 
 const playersNotIgnored:Player[]=[];
 /**
@@ -190,24 +215,26 @@ const playersNotIgnored:Player[]=[];
  */
 export function playerIsIgnored(player: Player){
 	for(let currentPlayer of playersNotIgnored)if(player.uuid==currentPlayer.uuid)return false;
-	if(player.isSimulatedPlayer())return true;
+	if(player.isSimulated())return true;
 	return false;
 }
 
 export function fixTeleport(player:Player,pos:Location){
+    /*
     let target=pos;
     let threatBlock=mc.getBlock(pos.x-1,pos.y+1,pos.z-1,pos.dimension);
     if(!threatBlock.isAir){
         target=new Location(pos.x,pos.y-1.5,pos.z,pos.dimension)
-    }
-    player.teleport(target);
+    }*/
+   //现在满月平台是按脚部传送玩家的，不会卡人，所以此处无需修复
+    player.teleport(pos);
 }
 /**
  * 
  * @param {Player} player 要判断是否频繁的玩家
  * @returns 是否频繁
  */
-export function toooften(player: Player) {//判断是否频繁传送
+export function tooOften(player: Player) {//判断是否频繁传送
     let times=0
     //遍历请求历史，将总数相加
     for (let request of requestsHistory) {
