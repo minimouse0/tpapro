@@ -135,6 +135,7 @@ export function tpaForm(player:Player,type:TpaType){
  */
 export function tpaskForm(origin:Player,target:Player,type:TpaType){
     const preference=new PlayerPreference(origin.uuid,db)
+    origin.tell("已经向"+target.name+"发送了弹窗来询问他是否接受这次传送。")
     new SimpleFormSession(new SimpleForm("",type==TpaType.TPA?`${origin.name}希望传送到您这里。`:`${origin.name}希望将您传送至他那里。`,[
         new SimpleFormButton("接受","接受",session=>{
             if(!origin.isOnline()){
