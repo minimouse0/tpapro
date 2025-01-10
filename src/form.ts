@@ -167,6 +167,7 @@ export function tpaskForm(origin:Player,target:Player,type:TpaType){
             
         })
     ],session=>{
+        target.tell("有一个"+origin.name+"发送给您的tpa请求窗口被关闭。如果刚刚没有对您弹窗显示tpa请求，就可能是因为您刚刚打开了部分游戏界面，导致该弹窗未正确显示。您可以输入/tpa accept来接受它，输入/tpa deny来拒绝它，或输入/tpa request来查看目前所有等待处理的tpa请求。")
         origin.tell(`${target.name}设置了弹窗提醒，但弹窗未成功发送。这可能是因为${target.name}关闭了弹窗，或打开了物品栏/其他功能窗口、处于暂停界面、网络卡顿或开启了分屏，或切换至其他窗口。您的请求已暂存，并在${preference.data.get("request_available")/1000}内有效。您可以提醒${target.name}输入/tpa accept接受，或重新发送请求。`);
         cachedRequests.unshift({origin,target,type,time:new Date()})
     }),target).send()

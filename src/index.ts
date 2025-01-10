@@ -1,16 +1,13 @@
 import {Logger,InitEvent, Player,Currency, Command, PlayerJoinEvent, JsonFile} from "../lib/index.js";
+import { maincmd,mgrcmd } from "./Command.js";
 import {conf} from "./conf.js"
-import { maincmdObj,mgrcmdObj } from "./Command.js";
 import { db,dbloaded,PlayerPreference } from "./data.js";
 import { playerIsIgnored, playerUnableToTpa } from "./tp.js";
+maincmd.name
+mgrcmd.name
 //注册指令
-Command.register(maincmdObj)
-Command.register(mgrcmdObj)
-
-InitEvent.on((e)=>{
-    Logger.info("This Full Moon Platform plugin successfully loaded.");
-    return true;
-})
+//Command.register(maincmdObj)
+//Command.register(mgrcmdObj)
 //问题
 //1. 插件在新建文件时不能提前新建好文件夹
 //2. 默认配置里的money如果服务器里没有对应计分板，会导致插件报错，然而新档都没有这个计分板
@@ -20,8 +17,6 @@ InitEvent.on((e)=>{
 //let tpaAskEvent=new Listener("ontpaproTpaAsk");
 //let tpaEvent=new Listener("ontpaproTpa")
 //Listener.init(PLUGIN_NAME);
-
-
 
 
 //初始化玩家的偏好设置

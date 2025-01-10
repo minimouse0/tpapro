@@ -24,20 +24,17 @@ function tellExecutor(executor:CommandExecutor,msg:string){
     }
 }
 
-class maincmd extends Command{
-    constructor(){
-        super("tpa","传送至其他玩家，或将其他玩家传送至您这里","",[
-            new CommandParam(CommandParamType.Mandatory,"accept",CommandParamDataType.Enum,new CommandEnum("accept",["accept","a"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"preferences",CommandParamDataType.Enum,new CommandEnum("preferences", ["preferences","p"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"here",CommandParamDataType.Enum,new CommandEnum("here", ["here","h"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"deny",CommandParamDataType.Enum,new CommandEnum("deny",["deny","refuse","reject","decline","denial","d"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"switch",CommandParamDataType.Enum,new CommandEnum("switch", ["switch", "s"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"to",CommandParamDataType.Enum,new CommandEnum("to", ["to"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"requests",CommandParamDataType.Enum,new CommandEnum("requests", ["requests","r"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"target",CommandParamDataType.Player),
-        ],[[],["to","target"],["accept"],["preferences"],["here"],["here","to","target"],["deny"],["switch"],["requests"]],InternalPermission.Any)
-    }   
-    callback(result:CommandResult){
+export const  maincmd =new Command("tpa",[
+        new CommandParam(CommandParamType.Mandatory,"accept",CommandParamDataType.Enum,new CommandEnum("accept",["accept","a"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"preferences",CommandParamDataType.Enum,new CommandEnum("preferences", ["preferences","p"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"here",CommandParamDataType.Enum,new CommandEnum("here", ["here","h"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"deny",CommandParamDataType.Enum,new CommandEnum("deny",["deny","refuse","reject","decline","denial","d"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"switch",CommandParamDataType.Enum,new CommandEnum("switch", ["switch", "s"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"to",CommandParamDataType.Enum,new CommandEnum("to", ["to"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"requests",CommandParamDataType.Enum,new CommandEnum("requests", ["requests","r"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"target",CommandParamDataType.Player),
+    ],[[],["to","target"],["accept"],["preferences"],["here"],["here","to","target"],["deny"],["switch"],["requests"]],
+    result=>{
         if(!dbloaded){
             tellExecutor(result.executor,"无法进行tpa，因为数据库已被卸载，服务器可能正在进行不停服维护，请联系管理员")
             return
@@ -47,7 +44,7 @@ class maincmd extends Command{
             //是玩家，直接继续
             case CommandExecutorType.Player:break;
             //是控制台，发出提示
-            case CommandExecutorType.CommandBlock:Logger.error("无法以控制台身份执行tpa命令，控制台是无法被传送进游戏里的")
+            case CommandExecutorType.Console:Logger.error("无法以控制台身份执行tpa命令，控制台是无法被传送进游戏里的")
             //不是玩家，放弃执行回调
             default:return;
         }
@@ -84,25 +81,25 @@ class maincmd extends Command{
         else {
             checkTpaConditions(player,result.params.get("target")?.value,result.params.get("to")?.value=="to",TpaType.TPA);
         }
-    }
-}
+    },
+    InternalPermission.Any,[],"传送至其他玩家，或将其他玩家传送至您这里"
+)
 
-class mgrcmd extends Command{
-    constructor(){
-        super("tpamgr", "管理您的tpa插件","",[
-            new CommandParam(CommandParamType.Mandatory,"reload",CommandParamDataType.Enum,new CommandEnum("reload", ["reload"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"log",CommandParamDataType.Enum,new CommandEnum("log", ["log"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"info",CommandParamDataType.Enum,new CommandEnum("info", ["conf"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"dev",CommandParamDataType.Enum,new CommandEnum("dev", ["dev"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"db",CommandParamDataType.Enum,new CommandEnum("db", ["db"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"unload",CommandParamDataType.Enum,new CommandEnum("unload", ["unload"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"load",CommandParamDataType.Enum,new CommandEnum("load", ["load"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"exe",CommandParamDataType.Enum,new CommandEnum("exe", ["exe"]),CommandEnumOptions.Unfold),
-            new CommandParam(CommandParamType.Mandatory,"devoptions",CommandParamDataType.String),
-            new CommandParam(CommandParamType.Mandatory,"dbcmd",CommandParamDataType.Message)
-        ],[["reload"],["log","info"],["dev","devoptions"],["db","exe","dbcmd"],["db","unload"],["db","load"]],InternalPermission.GameMasters)
-    }
-    callback(result: CommandResult): void {
+
+export const mgrcmd=new Command("tpamgr",
+    [
+        new CommandParam(CommandParamType.Mandatory,"reload",CommandParamDataType.Enum,new CommandEnum("reload", ["reload"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"log",CommandParamDataType.Enum,new CommandEnum("log", ["log"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"info",CommandParamDataType.Enum,new CommandEnum("info", ["conf"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"dev",CommandParamDataType.Enum,new CommandEnum("dev", ["dev"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"db",CommandParamDataType.Enum,new CommandEnum("db", ["db"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"unload",CommandParamDataType.Enum,new CommandEnum("unload", ["unload"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"load",CommandParamDataType.Enum,new CommandEnum("load", ["load"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"exe",CommandParamDataType.Enum,new CommandEnum("exe", ["exe"]),CommandEnumOptions.Unfold),
+        new CommandParam(CommandParamType.Mandatory,"devoptions",CommandParamDataType.String),
+        new CommandParam(CommandParamType.Mandatory,"dbcmd",CommandParamDataType.Message)
+    ],[["reload"],["log","info"],["dev","devoptions"],["db","exe","dbcmd"],["db","unload"],["db","load"]],
+    result=>{
         if (result.params.get("reload")?.value == "reload") {
             if (conf.reload()) {
                 tellExecutor(result.executor,"配置文件重载完成")
@@ -147,8 +144,6 @@ class mgrcmd extends Command{
                 tellExecutor(result.executor,JSON.stringify(db.queryAllSync(cmd),undefined,4))
             }
         }
-    }
-}
-
-export const maincmdObj=new maincmd()
-export const mgrcmdObj=new mgrcmd()
+    },
+    InternalPermission.GameMasters,[],"管理您的tpa插件"
+)
