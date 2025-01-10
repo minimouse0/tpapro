@@ -1,8 +1,8 @@
 import {Logger,InitEvent, Player,Currency, Command, PlayerJoinEvent, JsonFile} from "../lib/index.js";
 import {conf} from "./conf.js"
 import { maincmdObj,mgrcmdObj } from "./Command.js";
-import { db,PlayerPreference } from "./data.js";
-import { playerIsIgnored } from "./tp.js";
+import { db,dbloaded,PlayerPreference } from "./data.js";
+import { playerIsIgnored, playerUnableToTpa } from "./tp.js";
 //注册指令
 Command.register(maincmdObj)
 Command.register(mgrcmdObj)
@@ -11,7 +11,9 @@ InitEvent.on((e)=>{
     Logger.info("This Full Moon Platform plugin successfully loaded.");
     return true;
 })
-
+//问题
+//1. 插件在新建文件时不能提前新建好文件夹
+//2. 默认配置里的money如果服务器里没有对应计分板，会导致插件报错，然而新档都没有这个计分板
 
 
 ///////注册监听器//////
@@ -19,25 +21,6 @@ InitEvent.on((e)=>{
 //let tpaEvent=new Listener("ontpaproTpa")
 //Listener.init(PLUGIN_NAME);
 
-function dbMigration(player:Player){
-	const oldIndividualPreferences=new JsonFile("individualpreferences.json")
-	const veryOldIndividualPreferences=oldIndividualPreferences.get("preferences")
-    Logger.info(`玩家${player.name}的数据未迁移！正在迁移该玩家的数据`);
-	//通过遍历原来的所有数据来一次性迁移
-	//旧数据库有两个版本，都位于同一个文件中，一部分位于根目录直接用键值对存，另一部分位于preferences是一个数组，当前那个数组的读取慢的离谱，所以有了迁移玩家数据这个机制
-	//此处不是write了，而是直接在新数据库中插入数据
-    let write = oldIndividualPreferences.get("preferences");
-    write.push({ 
-        uuid: player.uuid,
-        name: oldIndividualPreferences.get(player.uuid).name, 
-        active: oldIndividualPreferences.get(player.uuid).active, 
-        requestavailable: oldIndividualPreferences.get(player.uuid).requestavailable, 
-        acceptmode: oldIndividualPreferences.get(player.uuid).acceptmode
-    });
-	//全部迁移完成后，不是删除键而是将文件夹重命名为.old结尾
-    oldIndividualPreferences.set("preferences",write);	
-    oldIndividualPreferences.delete(player.uuid);	
-}
 
 
 
@@ -53,7 +36,11 @@ PlayerJoinEvent.on(e=>{
 		else 
 	}
 		*/
-	new PlayerPreference(e.player.uuid,db).init()
+	if(!dbloaded){
+		Logger.fatal("有玩家正在进入服务器！由于数据库未加载，现在不会初始化他的数据。请尽快结束维护并重载插件。")
+		return;
+	}
+	if(!playerUnableToTpa(e.player))new PlayerPreference(e.player.uuid,db).init()
 })
 //成功传送的触发条件有3个，自动接受，指令接受（从缓存读取），弹窗接受（弹窗的暂存按钮也算指令接受）
 //在传送前，只有检查是否频繁的函数通过了，才会传送

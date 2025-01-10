@@ -1,4 +1,4 @@
-import { Player,Location, ModalFormSession, ModalForm } from "../lib";
+import { Player,Location, ModalFormSession, ModalForm, Logger } from "../lib";
 import { conf } from "./conf";
 import { AcceptMode, db,economy,getPlayerAcceptMode,PlayerPreference } from "./data";
 import { tpaForm, tpaskForm } from "./form";
@@ -30,20 +30,16 @@ export function acceptLatestTpaRequest(player:Player){
 	let norequests=true;
     //遍历已有请求寻找属于该玩家的已缓存请求
 	for(let cachedRequest of cachedRequests){
-        //检测是否已经下线
-		if(!cachedRequest.origin.isOnline())continue;
+        //检测是否已经下线，此处不做任何处理，因为要顺到下一位请求来接受
         //如果请求的接受者是这个玩家，且请求未过期
         //这里的请求过期是指请求的有效时间，而不是指请求的缓存时间
-		if(cachedRequest.target.uuid==player.uuid &&
-            //检测请求是否过期
-            new Date().getTime()-cachedRequest.time.getTime()<=new PlayerPreference(cachedRequest.origin.uuid,db).data.get("uuid").requestavailable
-        ){
-            //做完当前请求
-            completeRequest(cachedRequest);
-            cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
-            norequests = false;
-            break;
-		}
+		if(!canOperateRequest(player,cachedRequest))continue
+        
+        //做完当前请求
+        completeRequest(cachedRequest);
+        cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
+        norequests = false;
+        break;
 	}
 	if(norequests==true){player.tell(`最近没有收到任何tpa请求。`);}
 }
@@ -56,8 +52,8 @@ export function completeRequest(request:tpaRequest){
 
     //这个缓存的请求是tpa还是tpahere
     switch(request.type){
-        case TpaType.TPA:fixTeleport(request.origin,request.target.location)
-        case TpaType.TPAHERE:fixTeleport(request.target,request.origin.location)
+        case TpaType.TPA:fixedTeleport(request.origin,request.target.location)
+        case TpaType.TPAHERE:fixedTeleport(request.target,request.origin.location)
     }
     if (tooOften(request.origin)) economy.reduce(request.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
     //requestshistory指令接受
@@ -90,7 +86,8 @@ export function tpask(player:Player,origin:Player,type:TpaType){
     switch(getPlayerAcceptMode(preference)){
         //弹窗提醒
         case AcceptMode.Form:tpaskForm(origin, player, type);break;
-        case AcceptMode.Command:{//指令接受
+        //指令接受
+        case AcceptMode.Command:{
             switch(type) {
                 case TpaType.TPA:player.tell(`${origin.name}希望传送到您这里。`);break;
                 case TpaType.TPAHERE:player.tell(`${origin.name}希望将您传送至他那里。`);break;
@@ -98,16 +95,16 @@ export function tpask(player:Player,origin:Player,type:TpaType){
             player.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
             player.tell(`输入/tpa preferences来管理此通知。`)
             origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${preference.data.get("request_available")/1000}秒。你可通过/tpa preferences调整有效时间。`)
-            cachedRequests.unshift({origin:origin,target:player,type:type,time:new Date()})
+            cachedRequests.unshift({origin,target:player,type,time:new Date()})
             break;
         }
         case AcceptMode.Auto:{//自动接受
             switch(type){
-                case TpaType.TPA:fixTeleport(origin,player.location);break;
-                case TpaType.TPAHERE:fixTeleport(player,origin.location);break;
+                case TpaType.TPA:fixedTeleport(origin,player.location);break;
+                case TpaType.TPAHERE:fixedTeleport(player,origin.location);break;
             }
             if (tooOften(origin)) economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
-            requestsHistory.unshift({ origin: origin, target: player, type: type, time: new Date()});
+            requestsHistory.unshift({ origin, target: player, type, time: new Date()});
             economy.reduce(origin.uuid, conf.get("economy").price);
             break;
         }
@@ -115,52 +112,31 @@ export function tpask(player:Player,origin:Player,type:TpaType){
 }
 
 
-export function tpadeny(player:Player){
-    const preference=new PlayerPreference(player.uuid,db)
+export function denyLatestTpaRequest(player:Player){
 	let norequests=true;
-	for(let request of cachedRequests){
-		if(request.origin.uuid==null){
-			continue;
-		}
-		if(request.target.uuid==player.uuid&&
-            new Date().getTime()-request.time.getTime()<=preference.data.get("request_available")){
-			request.origin.tell(`${request.target.name}拒绝了您的请求`)
-			cachedRequests.splice(cachedRequests.indexOf(request),1);
-			norequests=false;
-			break;
-		}
+	for(let cachedRequest of cachedRequests){
+		if(!canOperateRequest(player,cachedRequest))continue
+
+        cachedRequest.origin.tell(`${cachedRequest.target.name}拒绝了您的请求`)
+        cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
+        norequests=false;
+        break;
 	}
 	if(norequests==true){player.tell(`最近没有任何可以拒绝的tpa请求。`);}
 }
-
-function denyLatestTpaRequest(player:Player){
-    const preference=new PlayerPreference(player.uuid,db)
-    let norequests=true;
-    for(let cachedRequest of cachedRequests){
-        //检测是否已经下线
-        if(!cachedRequest.origin.isOnline())continue;
-        if( cachedRequest.target.uuid == player.uuid&&new Date().getTime()-cachedRequest.time.getTime()
-            <=
-        preference.data.get("requestavailable")
-        ){
-            cachedRequest.origin.tell(`${cachedRequest.target.name}拒绝了您的请求`)
-            cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
-            norequests=false;
-            break;
-        }
-    }
-    if(norequests)player.tell(`最近没有任何可以拒绝的tpa请求。`);
-}
-function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
+function newTpaFromCmdResult(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
     //执行tpa或tpahere
     if (to) {
         if (targetarr.length==0) origin.tell("没有匹配的对象");
         else if(targetarr.length>1) origin.tell("您选中了多个玩家，无法确定您究竟要传送哪位玩家。这很可能是由于您使用了可选择多个玩家的目标选择器，如@a、@e等。请调整目标选择器的参数，让其只能选中一个玩家。");
-        else tpask(targetarr[0], origin,type);//玩家已经在指令中给出了tpa的对象，直接发送请求
+        else if(!new PlayerPreference(targetarr[0].uuid,db).data.get("active")) origin.tell("玩家"+targetarr[0].name+"关闭了tpa功能。当前他似乎不欢迎其他人向他发起tpa请求。")
+        else if(targetarr[0].uuid==origin.uuid) origin.tell("不能向自己发送传送请求。")
+        //玩家已经在指令中给出了tpa的对象，直接发送请求
+        else tpask((()=>{const player=Player.getOnlinePlayer(targetarr[0].uuid);if(player==undefined){throw new Error("错误202501100246，请联系作者")}return player})(), origin,type);
     }
     else tpaForm(origin,type);//让玩家选择tpa的对象。最终目标也是tpask()
 }
-export function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
+export function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,type:TpaType){
     const preference=new PlayerPreference(origin.uuid,db)
     if (!preference.data.get("active")){
         origin.tell("您未开启tpa。输入/tpa switch来开启。")
@@ -188,7 +164,7 @@ export function whethertpa(origin:Player,targetarr:Player[],to:boolean,type:TpaT
         return
     }
     //执行tpa
-    checkTpaConditions(origin,targetarr,to,type);
+    newTpaFromCmdResult(origin,targetarr,to,type);
 }
 
 function sendPayForFrequentlyTPForm(player:Player,targets:Player[],to:boolean,type:TpaType){
@@ -200,7 +176,7 @@ function sendPayForFrequentlyTPForm(player:Player,targets:Player[],to:boolean,ty
                 player.tell("您的余额不足");
             } else {
                 //执行tpa
-                checkTpaConditions(player,targets,to,type);
+                newTpaFromCmdResult(player,targets,to,type);
             }
         },false,"继续","取消"
     ),player)
@@ -215,11 +191,15 @@ const playersNotIgnored:Player[]=[];
  */
 export function playerIsIgnored(player: Player){
 	for(let currentPlayer of playersNotIgnored)if(player.uuid==currentPlayer.uuid)return false;
-	if(player.isSimulated())return true;
+	if(playerUnableToTpa(player))return true;
+    if(!new PlayerPreference(player.uuid,db).data.get("active"))return true
 	return false;
 }
+export function playerUnableToTpa(player:Player){
+    if(player.isSimulated())return true;
+}
 
-export function fixTeleport(player:Player,pos:Location){
+export function fixedTeleport(player:Player,pos:Location){
     /*
     let target=pos;
     let threatBlock=mc.getBlock(pos.x-1,pos.y+1,pos.z-1,pos.dimension);
@@ -245,4 +225,24 @@ export function tooOften(player: Player) {//判断是否频繁传送
         ) return true;
     }
     return false;
+}
+
+export function requestAvailable(request:tpaRequest):boolean{
+    if(!(request.origin.isOnline()&&request.target.isOnline()))return false
+    if(requestExpired(request))return false
+    return true;
+}
+
+export function requestExpired(request:tpaRequest):boolean{
+    return new Date().getTime()-request.time.getTime()>new PlayerPreference(request.origin.uuid,db).data.get("request_available")
+}
+
+/**
+ * 检查一个玩家是否能够接受或拒绝一个指定的请求
+ * @param player 要操作一个请求的玩家
+ * @param request 要检查的请求
+ * @returns 该请求是否能被该玩家操作
+ */
+export function canOperateRequest(player:Player,request:tpaRequest):boolean{
+    return request.target.uuid==player.uuid&&requestAvailable(request)
 }

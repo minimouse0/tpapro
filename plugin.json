@@ -12,7 +12,8 @@
     },
     "permissionRoot":"tpapro",
     "features":[
-        "yaml"
+        "yml",
+        "sqlite3"
     ],
     "priorities":{
         "default":[

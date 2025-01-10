@@ -17,11 +17,12 @@ import { Player ,
     CustomFormSession,
     CustomFormDropdown,
     SimpleFormButton,
-    SimpleFormButtonType
+    SimpleFormButtonType,
+    Logger
 } from "../lib";
-import {playerIsIgnored, tooOften, TpaType} from "./tp";
+import {canOperateRequest, playerIsIgnored, requestExpired, tooOften, TpaType} from "./tp";
 import { db, economy, PlayerPreference } from "./data";
-import {tpask,cachedRequests,requestsHistory,tpaRequest,fixTeleport} from "./tp"
+import {tpask,cachedRequests,requestsHistory,tpaRequest,fixedTeleport} from "./tp"
 import { conf } from "./conf";
 
 export function individualPreferencesForm(player:Player){
@@ -31,12 +32,12 @@ export function individualPreferencesForm(player:Player){
         new CustomFormLabel("instructions","如果关闭此开关，您将立即拒绝任何tpa请求，且/tpa指令除/tpa preferences外均禁用。您可通过输入/tpa preferences再次启用tpa。"),
         new CustomFormSwitch("active","tpa开关",preferences.data.get("active")),
         new CustomFormDropdown("accept_mode","接收到tpa请求时",mode,preferences.data.get("accept_mode")),
-        new CustomFormInput("request_available","tpa请求有效时间/秒",preferences.data.get("request_available").toString()," "),
+        new CustomFormInput("request_available","tpa请求有效时间/秒","请在此输入一个正整数",(preferences.data.get("request_available")/1000).toString()),
     ],e=>{
-        preferences.set("active",e.getSwitch("active").value);
-        preferences.set("accept_mode",e.getDropdown("accept_mode").value);
+        preferences.set({active:e.getSwitch("active").value});
+        preferences.set({accept_mode:e.getDropdown("accept_mode").value});
         const request_available_result=checkAndFixRequestAvailableTime(Number(e.getInput("request_available").value))
-        preferences.set("request_available",request_available_result.time*1000)
+        preferences.set({request_available:request_available_result.time*1000})
         player.tell(request_available_result.msg)
         player.tell("已保存");
     });
@@ -107,10 +108,13 @@ export function tpaForm(player:Player,type:TpaType){
         default:throw new Error("请联系插件开发者为tpa表单处添加处理新tpa类型枚举的实现！")
     }
     const onlinePlayers = Player.getAllOnline();
+    const availablePlayers:Player[]=[]
     const buttons:SimpleFormButton[]=[]
     for(let currentPlayer of onlinePlayers){
         //剔掉被忽略的玩家，如假人等、还有自己
-        if(playerIsIgnored(currentPlayer)||currentPlayer.uuid==player.uuid)onlinePlayers.splice(onlinePlayers.indexOf(currentPlayer),1);
+        if(!(playerIsIgnored(currentPlayer)||currentPlayer.uuid==player.uuid))availablePlayers.push(currentPlayer);
+    }
+    for(let currentPlayer of availablePlayers){
         //添加按钮
         buttons.push(new SimpleFormButton(currentPlayer.name,currentPlayer.name,session=>{
             if(preference.data.get("active"))tpask(currentPlayer,player,type);//正式的发送tpa
@@ -118,8 +122,8 @@ export function tpaForm(player:Player,type:TpaType){
         },undefined))
     }
     const fm = new SimpleForm(title,"",buttons)
-    if(onlinePlayers.length==0){player.tell("现在只有您自己在线。");}
-    else new SimpleFormSession(fm,player)
+    if(availablePlayers.length==0){player.tell("当前没有可以和你互传的玩家。");}
+    else new SimpleFormSession(fm,player).send()
     
 }
 
@@ -137,7 +141,7 @@ export function tpaskForm(origin:Player,target:Player,type:TpaType){
                 target.tell("找不到发起请求的玩家，他可能已经下线了。")
                 return;
             }
-            type==TpaType.TPA?fixTeleport(origin,target.location):fixTeleport(target,origin.location)
+            type==TpaType.TPA?fixedTeleport(origin,target.location):fixedTeleport(target,origin.location)
             //弹窗接受的tpa
             if (tooOften(origin)) {
                 economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
@@ -178,39 +182,33 @@ export function sendRequestsForm(player: Player){
     const availableRequests:tpaRequest[]=[]
     
     for(let request of cachedRequests){
-        if(!request.origin.isOnline())continue;
-        if(request.target.uuid==player.uuid && 
-            new Date().getTime()-request.time.getTime()
-                <=
-            new PlayerPreference(request.origin.uuid,db).data.get("request_available")
-        )availableRequests.push(request);
+        if(!canOperateRequest(player,request))continue
+        availableRequests.push(request);
     }
     //生成并发送表单部分
     const buttons:SimpleFormButton[]=[]
     for(let chosenRequest of availableRequests)buttons.push(new SimpleFormButton(
         chosenRequest.time.getTime().toString(),
-        "类型:"
-            +chosenRequest.type
+        "目的:"
+            +(()=>{switch(chosenRequest.type){case TpaType.TPA:return "将他传送到您这里";case TpaType.TPAHERE:return "将您传送到他那里"}})()
             +" 发起者:"
             +chosenRequest.origin.name
             +"\n"
-            +(new PlayerPreference(chosenRequest.origin.uuid,db).data.get("request_available")-(new Date().getTime()-chosenRequest.time.getTime()))/1000
+            +Math.floor((new PlayerPreference(chosenRequest.origin.uuid,db).data.get("request_available")-(new Date().getTime()-chosenRequest.time.getTime()))/1000)
             +"秒内有效",
         session=>{
-            if(chosenRequest.origin.uuid==null){
+            if(!chosenRequest.origin.isOnline()){
                 player.tell("没有找到请求发起者，该玩家可能已经下线。")
                 return;
             }
-            if(
-                chosenRequest.target.uuid==player.uuid&&
-                new Date().getTime()-chosenRequest.time.getTime()
-                    <=
-                new PlayerPreference(chosenRequest.origin.uuid,db).data.get("request_available")
-            )
-            sendOperateRequestForm(chosenRequest,session.player)
-            else player.tell("该请求已过期。")
+            if(!requestExpired(chosenRequest))sendOperateRequestForm(chosenRequest,session.player)
+            else player.tell("您犹豫了太久了，该请求已经过期了。")
         }
     ));
+    if(buttons.length==0){
+        player.tell("最近没有收到任何tpa请求。")
+        return
+    }
     new SimpleFormSession(new SimpleForm("选择一个请求","选择一个请求，并决定是否接受",buttons),player).send()
 }
 
@@ -240,8 +238,8 @@ export function sendOperateRequestForm(chosenRequest:tpaRequest,player:Player){
             if(chosenRequest.origin.uuid==null){player.tell("没有找到请求发起者，该玩家可能已经下线。");return;}
             //这个缓存的请求是tpa还是tpahere
             switch(chosenRequest.type){
-                case TpaType.TPA:fixTeleport(chosenRequest.origin,chosenRequest.target.location);break;
-                case TpaType.TPAHERE:fixTeleport(chosenRequest.target,chosenRequest.origin.location);break;
+                case TpaType.TPA:fixedTeleport(chosenRequest.origin,chosenRequest.target.location);break;
+                case TpaType.TPAHERE:fixedTeleport(chosenRequest.target,chosenRequest.origin.location);break;
             }
             if (tooOften(chosenRequest.origin)) {
                 economy.reduce(chosenRequest.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
@@ -256,5 +254,5 @@ export function sendOperateRequestForm(chosenRequest:tpaRequest,player:Player){
         }),
         new SimpleFormButton("搁置","搁置",session=>{}),
         new SimpleFormButton("丢弃","丢弃",session=>removeRequest(chosenRequest))
-    ]),player)
+    ]),player).send()
 }
