@@ -1,6 +1,7 @@
-import { JsonFile, Logger, YMLFile } from "../lib";
+import { JsonFile, Logger, YMLFile ,File} from "../lib";
+import {data_path} from "../lib/plugin_info"
 
-export const conf = new YMLFile("plugins\\tpapro\\config.yml");
+export const conf = new YMLFile(data_path+"/config.yml");
 //初始化config.json
 conf.init("frequency_limit", {
 	active: false,
@@ -33,6 +34,31 @@ conf.init("default_preferences", {
 	random_active: false
 });
 
+confMigration()
 
+export function confMigration(){
+	if(!File.ls(data_path).includes("config.json"))return;
+	Logger.info("正在迁移旧版配置文件")
+	const old = new JsonFile(data_path+"/config.json");
+	conf.set("frequency_limit",old.get("frequency_limit"))
+	const economyconf=old.get("economy")
+	delete economyconf["type"]
+	economyconf["currency"]=economyconf["object"]
+	delete economyconf["object"]
+	conf.set("economy",economyconf)
+	const vip=old.get("vip")
+	delete vip["type"]
+	conf.set("vip",vip)
+	const defaultp=old.get("default_preferences")
+	defaultp["request_available"]=defaultp["requestavailable"]
+	delete defaultp["requestavailable"]
+	defaultp["accept_mode"]=defaultp["acceptmode"]
+	delete defaultp["acceptmode"]
+	conf.set("defeault_preferences",defaultp)
+	conf.set("allow_spc_tp",old.get("allow_spc_tp"))
+	conf.set("lang",old.get("lang"))
+	File.rename(data_path+"/config.json",data_path+"/config.json.bak")
+	Logger.info("配置文件迁移完成")
+}
 
 

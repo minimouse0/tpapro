@@ -1,4 +1,4 @@
-import { Currency, JsonFile, Logger, Player, SQLDataType, SQLDataTypeEnum, SQLite3 } from "../lib";
+import { Currency, JsonFile, Logger, Player, SQLDataType, SQLDataTypeEnum, SQLite3,File } from "../lib";
 import { data_path } from "../lib/plugin_info.js"
 import { conf } from "./conf.js";
 //考虑到数据库加载失败一般会抛出异常，所以此处直接假设了dbloaded被执行的情况下数据库必然是加载成功的
@@ -174,24 +174,39 @@ function getAcceptMode(mode:number):AcceptMode{
 }
 
 
-function dbMigration(player:Player){
-	const oldIndividualPreferences=new JsonFile("individualpreferences.json")
+function dbMigration(){
+	
+	if(!File.ls(data_path).includes("individualpreferences.json"))return;
+	Logger.info("正在迁移旧版数据库")
+	const oldIndividualPreferences=new JsonFile(data_path+"/individualpreferences.json")
 	const veryOldIndividualPreferences=oldIndividualPreferences.get("preferences")
-	Logger.info(`玩家${player.name}的数据未迁移！正在迁移该玩家的数据`);
+	for(let preference of veryOldIndividualPreferences){
+		//Logger.info(`玩家${preference.name}的数据未迁移！正在迁移该玩家的数据`);
+		const newPreference=new PlayerPreference(preference.uuid,db)
+		newPreference.init()
+		newPreference.set({
+			active:preference.active,
+			accept_mode:preference.acceptmode,
+			request_available:preference.requestavailable,
+			permission_list:{}
+		})
+	}
 	//通过遍历原来的所有数据来一次性迁移
 	//旧数据库有两个版本，都位于同一个文件中，一部分位于根目录直接用键值对存，另一部分位于preferences是一个数组，当前那个数组的读取慢的离谱，所以有了迁移玩家数据这个机制
 	//此处不是write了，而是直接在新数据库中插入数据
+	/*
 	let write = oldIndividualPreferences.get("preferences");
 	write.push({ 
-		uuid: player.uuid,
-		name: oldIndividualPreferences.get(player.uuid).name, 
-		active: oldIndividualPreferences.get(player.uuid).active, 
-		requestavailable: oldIndividualPreferences.get(player.uuid).requestavailable, 
-		acceptmode: oldIndividualPreferences.get(player.uuid).acceptmode
-	});
+		uuid: .uuid,
+		name: veryOldIndividualPreferences.get(player.uuid).name, 
+		active: veryOldIndividualPreferences.get(player.uuid).active, 
+		requestavailable: veryOldIndividualPreferences.get(player.uuid).requestavailable, 
+		acceptmode: veryOldIndividualPreferences.get(player.uuid).acceptmode
+	});*/
 	//全部迁移完成后，不是删除键而是将文件夹重命名为.old结尾
-	oldIndividualPreferences.set("preferences",write);	
-	oldIndividualPreferences.delete(player.uuid);	
+	File.rename(data_path+"/individualpreferences.json",data_path+"/individualpreferences.json.bak")
+	//veryOldIndividualPreferences.set("preferences",write);	
+	//veryOldIndividualPreferences.delete(player.uuid);	
 }
 
 export function getPlayerAcceptMode(playerPreference:PlayerPreference):AcceptMode{
@@ -202,3 +217,5 @@ export const economy = new Currency(conf.get("economy").currency);
 
 
 loaddb()
+
+dbMigration()
