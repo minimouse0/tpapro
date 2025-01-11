@@ -3,7 +3,7 @@
 ## 安装方法
 
 1. 前往插件release页面下载tpapro最新的发行版。
-2. 解压压缩包，将其中的tpapro文件夹复制粘贴到服务器的plugins文件夹，所有同名文件夹合并，所有同名文件替换
+2. 解压压缩包，将其中的llse/tpapro文件夹复制粘贴到服务器的plugins文件夹，所有同名文件夹合并，所有同名文件替换
 3. 检查服务端的server.properties文件中的`server-authoritative-movement`并确保其没有被设置为`client-auth`。
 4. 开启服务器，或通过插件加载器提供的方式加载插件。
 
