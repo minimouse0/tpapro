@@ -35,10 +35,10 @@
 
 ### 管理员命令
 
-`/tpamgr reload`：重载插件配置文件（仅管理员可用）
-`/tpamgr db unload`：关闭数据库连接。关闭后插件大部分功能都将不可用。
-`/tpamgr db load`：恢复数据库连接。
-`/tpamgr db exe <sqlite3语句>`：执行数据库操作
+- `/tpamgr reload`：重载插件配置文件（仅管理员可用）
+- `/tpamgr db unload`：关闭数据库连接。关闭后插件大部分功能都将不可用。
+- `/tpamgr db load`：恢复数据库连接。
+- `/tpamgr db exe <sqlite3语句>`：执行数据库操作
 
 
 ## 配置文件
@@ -51,7 +51,7 @@ default_preferences:
     # 在聊天中显示模式下或将请求暂存后的请求有效期，单位毫秒（未测试不是1-2147438647之间的整数的可行性，超出范围请谨慎使用）
     request_available: 120000,
     # 接收到tpa请求时的选择，0为自动接受，1为弹窗提醒，2为在聊天中显示，超出这个范围会导致/tpa preference报错且玩家收不到tpa请求
-    acceptmode: 2,
+    accep_tmode: 2,
     # ？
     random_active: false
 frequency_limit: 
@@ -90,6 +90,9 @@ lang: zh_cn
 # 允许观察者模式玩家传送
 allow_spc_tp: 0
 ```
+
+> [!NOTE]
+> 数据库管理请通过`/tpamgr db exe <sqlite3语句>`命令或关闭数据库连接后通过sqlite3数据库管理软件打开data.db
 
 <!--
 
