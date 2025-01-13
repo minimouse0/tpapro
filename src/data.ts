@@ -1,4 +1,4 @@
-import { Currency, JsonFile, Logger, Player, SQLDataType, SQLDataTypeEnum, SQLite3,File } from "../lib";
+import { Currency, JsonFile, Logger, Player, SQLDataType, SQLDataTypeEnum, SQLite3,File, SQLite3Column } from "../lib";
 import { data_path } from "../lib/plugin_info.js"
 import { conf } from "./conf.js";
 //考虑到数据库加载失败一般会抛出异常，所以此处直接假设了dbloaded被执行的情况下数据库必然是加载成功的
@@ -16,6 +16,16 @@ export function unloaddb(){
 
 export function loaddb(){
 	if(dbloaded)return false;
+	const newColumnsFrom130:SQLite3Column[]=[
+		{
+			name:"xuid",
+			data_type:new SQLDataType(SQLDataTypeEnum.TEXT),
+		},
+		{
+			name:"name",
+			data_type:new SQLDataType(SQLDataTypeEnum.TEXT),
+		}
+	]
 	db=new SQLite3(data_path+"/data.db")
 	//创建玩家个人设置表
 	db.initTable(tableName,
@@ -26,6 +36,7 @@ export function loaddb(){
 				primary_key:true
 			}
 		},
+		...newColumnsFrom130,
 		{
 			name:"permission_list",
 			data_type:new SQLDataType(SQLDataTypeEnum.TEXT)
@@ -43,6 +54,8 @@ export function loaddb(){
 			data_type:new SQLDataType(SQLDataTypeEnum.INTEGER)
 		}
 	)
+	//创建从1.3.0以来新增的列
+	for(let column of newColumnsFrom130)db.newColumn(tableName,column)
 	dbloaded=true
 	return true
 }
@@ -62,8 +75,17 @@ export class PlayerPreference{
 		this.reload()
 	}
 	init(){//初始化，数据更新也写在这
+		const playerObj=Player.getOnlinePlayer(this.uuid)
 		if([...this.db.getRowFromPrimaryKey(tableName,this.uuid).keys()].length==0){
 			this.db.setRowFromPrimaryKey(tableName,this.uuid,
+			{
+				columnName:"xuid",
+				value:playerObj?.xuid
+			},
+			{
+				columnName:"name",
+				value:playerObj?.name
+			},
 			{
 				columnName:"permission_list",
 				value:"{}"
@@ -81,14 +103,23 @@ export class PlayerPreference{
 				value:120000
 			})
 		}
+		//更新该玩家的xuid和name数据
+		const preference=new PlayerPreference(this.uuid,db)
+		if(playerObj!=undefined)if(playerObj.isOnline())preference.set({xuid:playerObj.xuid,name:playerObj.name})
 	}
 	set(data:{
+		xuid?:string,
+		name?:string,
 		active?:boolean,
 		accept_mode?:number,
 		request_available?:number
 		permission_list?:any
 	}){
 		const OverwrittingData=this.db.getRowFromPrimaryKey(tableName,this.uuid)
+		//玩家信息
+		OverwrittingData.set("name",data.name!=undefined?data.name:OverwrittingData.get("name"))
+		OverwrittingData.set("xuid",data.xuid!=undefined?data.xuid:OverwrittingData.get("xuid"))
+		//其他玩家个人数据
 		OverwrittingData.set("active",data.active!=undefined?data.active:OverwrittingData.get("active"))
 		OverwrittingData.set("accept_mode",data.accept_mode!=undefined?data.accept_mode:OverwrittingData.get("accept_mode"))
 		OverwrittingData.set("request_available",data.request_available!=undefined?data.request_available:OverwrittingData.get("request_available"))
@@ -105,7 +136,13 @@ export class PlayerPreference{
         },{
             columnName:"permission_list",
             value:JSON.stringify(OverwrittingData.get("permission_list"))
-        })
+        },{
+			columnName:"name",
+			value:OverwrittingData.get("name")
+		},{
+			columnName:"xuid",
+			value:OverwrittingData.get("xuid")
+		})
 	}
 	reload(){
 		this.data=this.db.getRowFromPrimaryKey(tableName,this.uuid)
