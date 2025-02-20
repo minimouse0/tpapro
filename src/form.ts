@@ -18,9 +18,11 @@ import { Player ,
     CustomFormDropdown,
     SimpleFormButton,
     SimpleFormButtonType,
-    Logger
+    Logger,
+    ModalFormSession,
+    ModalForm
 } from "../lib";
-import {canOperateRequest, playerIsIgnored, requestExpired, tooOften, TpaType} from "./tp";
+import {canOperateRequest, completeRequest, playerIsIgnored, requestExpired, tooOften, TpaType} from "./tp";
 import { db, economy, PlayerPreference } from "./data";
 import {tpask,cachedRequests,requestsHistory,tpaRequest,fixedTeleport} from "./tp"
 import { conf } from "./conf";
@@ -142,13 +144,11 @@ export function tpaskForm(origin:Player,target:Player,type:TpaType){
                 target.tell("找不到发起请求的玩家，他可能已经下线了。")
                 return;
             }
-            type==TpaType.TPA?fixedTeleport(origin,target.location):fixedTeleport(target,origin.location)
-            //弹窗接受的tpa
-            if (tooOften(origin)) {
-                economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
-            }
-            requestsHistory.unshift({ origin, target, type, time: new Date()});
-            economy.reduce(origin.uuid, conf.get("economy").price);
+            //这里直接新建一个请求用于完成，至于后面会从缓存请求中删除这个请求，删除那步如果缓存中没有，就什么都不会发生
+            //这个请求也是需要放到缓存里的，因为后面可能会因为其他原因把这个请求搁置
+            const request={origin,target,type,time:new Date()}
+            cachedRequests.unshift(request)
+            completeRequest(request)
         }),
         new SimpleFormButton("拒绝","拒绝",session=>{
             if(!origin.isOnline()){
@@ -214,12 +214,13 @@ export function sendRequestsForm(player: Player){
     new SimpleFormSession(new SimpleForm("选择一个请求","选择一个请求，并决定是否接受",buttons),player).send()
 }
 
-function removeRequest(request:tpaRequest){
+export function removeRequest(request:tpaRequest){
+    //这里不要直接indexof，因为传入的request可能不存在于cachedRequests里
 	cachedRequests.forEach((currentRequest,i)=>{
 		if(
             request.origin.uuid==currentRequest.origin.uuid && 
             request.target.uuid==currentRequest.target.uuid && 
-            request.time==currentRequest.time
+            request.time.getTime()==currentRequest.time.getTime()
         )cachedRequests.splice(i,1);
 	})
 }
@@ -227,34 +228,77 @@ function removeRequest(request:tpaRequest){
  * 完成cachedrequests中的请求后的收尾动作
  * @param {Request} request 此次完成的请求
  */
-function requestDone(request){
+export function requestDone(request:tpaRequest){
 	//requestshistory指令接受
-	requestsHistory.unshift(request);
-	requestsHistory[0].time = new Date();
+    //在请求历史中压入刚刚执行的请求
+    requestsHistory.unshift(request);
+    //请求历史的时间表示请求被响应的时间，列表的第一个（索引0）是刚被压入，需要被写入时间的
+    requestsHistory[0].time = new Date()
 	removeRequest(request)
 }
 
 export function sendOperateRequestForm(chosenRequest:tpaRequest,player:Player){
     new SimpleFormSession(new SimpleForm(" ","对玩家"+chosenRequest.origin.name+"向您发起的"+chosenRequest.type+"请求",[
-        new SimpleFormButton("接受","接受",session=>{
+        new SimpleFormButton("接受","接受",()=>{
             if(chosenRequest.origin.uuid==null){player.tell("没有找到请求发起者，该玩家可能已经下线。");return;}
-            //这个缓存的请求是tpa还是tpahere
-            switch(chosenRequest.type){
-                case TpaType.TPA:fixedTeleport(chosenRequest.origin,chosenRequest.target.location);break;
-                case TpaType.TPAHERE:fixedTeleport(chosenRequest.target,chosenRequest.origin.location);break;
-            }
-            if (tooOften(chosenRequest.origin)) {
-                economy.reduce(chosenRequest.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
-            }				
-            economy.reduce(chosenRequest.origin.uuid, conf.get("economy").price);//基础价格
-            requestDone(chosenRequest)		
+            //注意，completeRequest是异步的
+            completeRequest(chosenRequest)
         }),
-        new SimpleFormButton("拒绝","拒绝",session=>{
+        new SimpleFormButton("拒绝","拒绝",()=>{
             if(chosenRequest.origin.uuid==null){player.tell("没有找到请求发起者，该玩家可能已经下线。");return;}
-            chosenRequest.origin.tell(chosenRequest.target.name+"拒绝了您的"+chosenRequest.type+"请求")
+            chosenRequest.origin.tell(chosenRequest.target.name+"拒绝了您的请求")
             removeRequest(chosenRequest);
         }),
-        new SimpleFormButton("搁置","搁置",session=>{}),
-        new SimpleFormButton("丢弃","丢弃",session=>removeRequest(chosenRequest))
+        new SimpleFormButton("搁置","搁置",()=>{}),
+        new SimpleFormButton("丢弃","丢弃",()=>removeRequest(chosenRequest))
     ]),player).send()
+}
+export function sendSpectatorNotAllowedNortification(player:Player){
+    new SimpleFormSession(newOneButtonForm("当前服务器已经禁止在观察者模式下进行玩家互传，请切换至其他游戏模式后再试。"),player).send()
+}
+function newOneButtonForm(text:string){
+    return new SimpleForm("",text,[new SimpleFormButton("确定","确定",()=>{})])
+}
+export function sendTargetSpectatorNotAllowedNortification(player:Player){
+    new SimpleFormSession(newOneButtonForm("对方正处在观察者模式，然而当前服务器已经禁止在观察者模式下进行玩家互传，请等他切换至其他游戏模式后再试。"),player).send()
+}
+export async function sendTpaHereFlyingWarning(lastSessionOrPlayer:SimpleFormSession | CustomFormSession | ModalFormSession | Player){
+    return await new Promise<boolean>(resolve=>{
+        new ModalFormSession(new ModalForm(
+            "警告","您当前正在飞行！如果现在让其他人传送到您的位置，他很可能在空中坠落，这会对他造成巨量摔落伤害，甚至将其摔死。确认要立即请求他人传送过来吗？",
+            //harryxi提到的formapiex中的解决办法
+            ()=>setTimeout(()=>resolve(true),0),
+            false,
+            "确认",
+            "取消",
+            ()=>setTimeout(()=>resolve(false),0)
+        ),lastSessionOrPlayer).send()
+    })
+}
+export async function sendTpaFlyingWarning(lastSessionOrPlayer:SimpleFormSession | CustomFormSession | ModalFormSession | Player){
+    return await new Promise<boolean>(resolve=>{
+        new ModalFormSession(new ModalForm(
+            "警告","您当前正在飞行！如果现在让对方传送到您的位置，他很可能在空中坠落，这会对他造成巨量摔落伤害，甚至将其摔死。确认要立即使他传送过来吗？\n若您选择取消，该请求不会被删除或拒绝。您可以点击取消后在安全地点着陆，然后通过/tpa accept接受该请求。",
+            //harryxi提到的formapiex中的解决办法
+            ()=>setTimeout(()=>resolve(true),0),
+            false,
+            "确认",
+            "取消",
+            ()=>setTimeout(()=>resolve(false),0)
+        ),lastSessionOrPlayer).send()
+    })
+}
+//用于对方飞行中被传送方的确认，目前未采用
+export async function sendTargetFlyingWarning(lastSessionOrPlayer:SimpleFormSession | CustomFormSession | ModalFormSession | Player){
+    return await new Promise<boolean>(resolve=>{
+        new ModalFormSession(new ModalForm(
+            "警告","对方当前正在飞行！如果现在传送过去，您很可能在空中坠落，这会对导致您受到巨量摔落伤害，甚至摔死。确认要立即传送过去吗？\n若您选择取消，该请求不会被删除或拒绝。您可以等他在安全地点着陆，然后通过/tpa accept接受该请求。",
+            //harryxi提到的formapiex中的解决办法
+            ()=>setTimeout(()=>resolve(true),0),
+            false,
+            "确认",
+            "取消",
+            ()=>setTimeout(()=>resolve(false),0)
+        ),lastSessionOrPlayer).send()
+    })
 }

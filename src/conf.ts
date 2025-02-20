@@ -33,6 +33,7 @@ conf.init("default_preferences", {
 	accept_mode: 2,
 	random_active: false
 });
+conf.init("allow_spc_tp",false)
 
 confMigration()
 

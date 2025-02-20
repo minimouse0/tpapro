@@ -1,7 +1,8 @@
-import { Player,Location, ModalFormSession, ModalForm, Logger } from "../lib";
+import { Player,Location, ModalFormSession, ModalForm, Logger, GameMode } from "../lib";
 import { conf } from "./conf";
 import { AcceptMode, db,economy,getPlayerAcceptMode,PlayerPreference } from "./data";
-import { tpaForm, tpaskForm } from "./form";
+import { removeRequest, requestDone, sendSpectatorNotAllowedNortification, sendTargetFlyingWarning, sendTargetSpectatorNotAllowedNortification, sendTpaFlyingWarning, sendTpaHereFlyingWarning, tpaForm, tpaskForm } from "./form";
+import { playerIsFlying } from "./isFlying";
 
 export enum TpaType{
     TPA,
@@ -36,8 +37,9 @@ export function acceptLatestTpaRequest(player:Player){
 		if(!canOperateRequest(player,cachedRequest))continue
         
         //做完当前请求
+        //注意，completeRequest是异步的
+        //但是这里没用等待completeRequest完成，因为后续代码并不需要等待它修改什么东西
         completeRequest(cachedRequest);
-        cachedRequests.splice(cachedRequests.indexOf(cachedRequest),1);
         norequests = false;
         break;
 	}
@@ -46,23 +48,32 @@ export function acceptLatestTpaRequest(player:Player){
 
 /**
  * 将一个请求做完，包括传送、扣费、记录
+ * 在请求做完之前可以随时打断它
  * @param request 要完成的请求
  */
-export function completeRequest(request:tpaRequest){
-
+export async function completeRequest(request:tpaRequest){
+    //如果请求是tpa，且自己在高空中，证明传送过来是危险的
+    if(request.type==TpaType.TPA&&playerIsFlying(request.target.uuid)&&
+        (request.origin.gameMode==GameMode.Survival||request.origin.gameMode==GameMode.Adventure)
+    ){
+        //对方不是自动接受的话向对方发送提示，是自动接受的话向自己发送提示
+        if(getPlayerAcceptMode(new PlayerPreference(request.target.uuid,db))!=AcceptMode.Auto){
+            if(!await sendTpaFlyingWarning(request.target))return;
+        }
+        else{
+            if(!await sendTargetFlyingWarning(request.origin))return;
+        }
+    }
     //这个缓存的请求是tpa还是tpahere
     switch(request.type){
-        case TpaType.TPA:fixedTeleport(request.origin,request.target.location)
-        case TpaType.TPAHERE:fixedTeleport(request.target,request.origin.location)
+        case TpaType.TPA:fixedTeleport(request.origin,request.target.location);break;
+        case TpaType.TPAHERE:fixedTeleport(request.target,request.origin.location);break;
     }
-    if (tooOften(request.origin)) economy.reduce(request.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
-    //requestshistory指令接受
-    //在请求历史中压入刚刚执行的请求
-    requestsHistory.unshift(request);
-    //请求历史的时间表示请求被响应的时间，列表的第一个（索引0）是刚被压入，需要被写入时间的
-    requestsHistory[0].time = new Date()
-    //按基础价格进行扣款
-    economy.reduce(request.origin.uuid, conf.get("economy").price);
+    if (tooOften(request.origin)) {
+        economy.reduce(request.origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
+    }				
+    economy.reduce(request.origin.uuid, conf.get("economy").price);//基础价格
+    requestDone(request)
     //记得写经济是否充足
     //如果玩家经济不充足会被直接拒绝
     //如果玩家经济充足才会进到这里然后被扣钱
@@ -75,37 +86,46 @@ export function completeRequest(request:tpaRequest){
  * 向tpa目标发起询问  
  *   
  * tpa发起后，共有三种方式，一种是自动接受，直接在tpask里面，一种是弹窗提醒，在tpaskForm里面，一种是指令接受，要从指令开始找
- * @param player 请求目标
+ * @param target 请求目标
  * @param origin 请求发起者
  * @param type tpa种类，可选"tpa"或"tpahere"
  */
-export function tpask(player:Player,origin:Player,type:TpaType){
-    const preference=new PlayerPreference(player.uuid,db)
+export async function tpask(target:Player,origin:Player,type:TpaType){
+    const preference=new PlayerPreference(target.uuid,db)
+    //如果对方处于观察者模式，就直接放弃传送
+    if(!conf.get("allow_spc_tp")&&target.gameMode==GameMode.Spectator){
+        sendTargetSpectatorNotAllowedNortification(origin)
+        target.tell(origin.name+"正打算与您互传，然而您正处于观察者模式下。由于服务器设置了禁止玩家们在观察者模式下互传，他目前无法继续与您互传。如果接受来自他人的互传请求，请修改为其他游戏模式，然后让他们再试一次。")
+        return;
+    }
+    
+    //如果是tpahere而且自己正在飞行，那么发出警告
+    //tpahere的时候只有对方处于容易摔死的游戏模式才发出警告
+    //因为这个地方需要等待，所以整个函数改了异步
+    if(type==TpaType.TPAHERE&&playerIsFlying(origin.uuid)&&
+        (target.gameMode==GameMode.Survival||target.gameMode==GameMode.Adventure)
+    ){
+        if(!await sendTpaHereFlyingWarning(origin))return;
+    }
     //触发其他插件事件
     //if(!tpaAskEvent.exec(player,origin,type)){return;}
     switch(getPlayerAcceptMode(preference)){
         //弹窗提醒
-        case AcceptMode.Form:tpaskForm(origin, player, type);break;
+        case AcceptMode.Form:tpaskForm(origin, target, type);break;
         //指令接受
         case AcceptMode.Command:{
             switch(type) {
-                case TpaType.TPA:player.tell(`${origin.name}希望传送到您这里。`);break;
-                case TpaType.TPAHERE:player.tell(`${origin.name}希望将您传送至他那里。`);break;
+                case TpaType.TPA:target.tell(`${origin.name}希望传送到您这里。`);break;
+                case TpaType.TPAHERE:target.tell(`${origin.name}希望将您传送至他那里。`);break;
             }
-            player.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
-            player.tell(`输入/tpa preferences来管理此通知。`)
-            origin.tell(`由于${player.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${preference.data.get("request_available")/1000}秒。你可通过/tpa preferences调整有效时间。`)
-            cachedRequests.unshift({origin,target:player,type,time:new Date()})
+            target.tell(`输入/tpa accept接受，输入/tpa deny拒绝。`);
+            target.tell(`输入/tpa preferences来管理此通知。`)
+            origin.tell(`由于${target.name}未设置弹窗提醒，对方输入指令同意前，您的请求将有效${preference.data.get("request_available")/1000}秒。你可通过/tpa preferences调整有效时间。`)
+            cachedRequests.unshift({origin,target:target,type,time:new Date()})
             break;
         }
         case AcceptMode.Auto:{//自动接受
-            switch(type){
-                case TpaType.TPA:fixedTeleport(origin,player.location);break;
-                case TpaType.TPAHERE:fixedTeleport(player,origin.location);break;
-            }
-            if (tooOften(origin)) economy.reduce(origin.uuid, conf.get("frequency_limit").limit_price);//频繁价格
-            requestsHistory.unshift({ origin, target: player, type, time: new Date()});
-            economy.reduce(origin.uuid, conf.get("economy").price);
+            completeRequest({origin,target,type,time:new Date()})
             break;
         }
     }
@@ -142,6 +162,11 @@ export function checkTpaConditions(origin:Player,targetarr:Player[],to:boolean,t
         origin.tell("您未开启tpa。输入/tpa switch来开启。")
         return
     }
+    //如果自己正处于观察者模式，就禁止玩家进行传送
+    if(!conf.get("allow_spc_tp")&&origin.gameMode==GameMode.Spectator){
+        sendSpectatorNotAllowedNortification(origin)
+        return;
+    }
     //tpa
     //vip专属逻辑、tpa禁区可以直接写在前面这里
     //目前vip需要折扣、免费、不受频率限制，频繁后不加价或加价部分折扣
@@ -171,7 +196,7 @@ function sendPayForFrequentlyTPForm(player:Player,targets:Player[],to:boolean,ty
     new ModalFormSession(new ModalForm(
         "发送tpa请求过于频繁",
         `发送tpa请求过于频繁！暂时您需要花费${conf.get("frequency_limit").limit_price + conf.get("economy").price}${conf.get("economy").name}才能继续传送。`,
-        session=>{
+        ()=>{
             if (economy.get(player.uuid) < conf.get("economy").price + conf.get("frequency_limit").limit_price) {
                 player.tell("您的余额不足");
             } else {
