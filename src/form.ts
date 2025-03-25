@@ -272,7 +272,7 @@ export async function sendTpaHereFlyingWarning(lastSessionOrPlayer:SimpleFormSes
             "确认",
             "取消",
             ()=>setTimeout(()=>resolve(false),0)
-        ),lastSessionOrPlayer).send()
+        ),lastSessionOrPlayer as any).send()
     })
 }
 export async function sendTpaFlyingWarning(lastSessionOrPlayer:SimpleFormSession | CustomFormSession | ModalFormSession | Player){
@@ -285,7 +285,7 @@ export async function sendTpaFlyingWarning(lastSessionOrPlayer:SimpleFormSession
             "确认",
             "取消",
             ()=>setTimeout(()=>resolve(false),0)
-        ),lastSessionOrPlayer).send()
+        ),lastSessionOrPlayer as any).send()
     })
 }
 //用于对方飞行中被传送方的确认，目前未采用
@@ -299,6 +299,6 @@ export async function sendTargetFlyingWarning(lastSessionOrPlayer:SimpleFormSess
             "确认",
             "取消",
             ()=>setTimeout(()=>resolve(false),0)
-        ),lastSessionOrPlayer).send()
+        ),lastSessionOrPlayer as any).send()
     })
 }
