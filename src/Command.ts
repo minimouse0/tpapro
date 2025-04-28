@@ -8,7 +8,6 @@ import {
     CommandParamDataType, 
     CommandParamType, 
     CommandResult, 
-    InternalPermission, 
     Logger, 
     Player
 } from "../lib";
@@ -18,8 +17,8 @@ import { acceptLatestTpaRequest, denyLatestTpaRequest, TpaType, checkTpaConditio
 import { individualPreferencesForm, sendRequestsForm } from "./form";
 
 function tellExecutor(executor:CommandExecutor,msg:string){
-    switch(executor.type){
-        case CommandExecutorType.Player:executor.object.tell(msg);break;
+    switch(executor.commandExecutorType){
+        case CommandExecutorType.Player:executor.asPlayer()?.tell(msg);break;
         case CommandExecutorType.Console:Logger.info(msg);break;
     }
 }
@@ -40,7 +39,7 @@ export const  maincmd =new Command("tpa",[
             return
         }
         //首先判断是否是玩家，不是玩家就放弃执行
-        switch(result.executor.type){
+        switch(result.executor.commandExecutorType){
             //是玩家，直接继续
             case CommandExecutorType.Player:break;
             //是控制台，发出提示
@@ -48,7 +47,7 @@ export const  maincmd =new Command("tpa",[
             //不是玩家，放弃执行回调
             default:return;
         }
-        const player:Player=result.executor.object
+        const player:Player=result.executor.asPlayer() as Player
         //指令接受
         if (result.params.get("accept")?.value == "accept" || result.params.get("accept")?.value == "a") {//指令接受
             if (new PlayerPreference(player.uuid,db).data.get("active")) acceptLatestTpaRequest(player);
@@ -82,7 +81,9 @@ export const  maincmd =new Command("tpa",[
             checkTpaConditions(player,result.params.get("target")?.value,result.params.get("to")?.value=="to",TpaType.TPA);
         }
     },
-    InternalPermission.Any,[],"传送至其他玩家，或将其他玩家传送至您这里"
+    {
+        anyPlayer:true
+    },[],"传送至其他玩家，或将其他玩家传送至您这里"
 )
 
 
@@ -145,5 +146,7 @@ export const mgrcmd=new Command("tpamgr",
             }
         }
     },
-    InternalPermission.GameMasters,[],"管理您的tpa插件"
+    {
+        operator:true
+    },[],"管理您的tpa插件"
 )
